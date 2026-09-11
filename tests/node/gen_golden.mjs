@@ -51,8 +51,37 @@ b.prep(4, 12); b.writeFloat32(0); b.writeFloat32(1); b.writeFloat32(0);  // elem
 b.prep(4, 12); b.writeFloat32(0); b.writeFloat32(0); b.writeFloat32(1);  // elem0 (1,0,0)
 const pointsVec = b.endVector();
 
-// TestTable: 23 fields
-b.startObject(23);
+// items [Item] sorted by the `id` key: (1,100), (5,50), (9,90)
+function makeItem(id, val) {
+  b.startObject(2);
+  b.addFieldInt32(0, id, 0);   // id (uint)
+  b.addFieldInt32(1, val, 0);  // val
+  return b.endObject();
+}
+const itemsVec = offsetVec([makeItem(1, 100), makeItem(5, 50), makeItem(9, 90)]);
+
+// union payloads: [Inner(in2), Other{tag:"alt"}]
+const otherTag = b.createString('alt');
+b.startObject(1);
+b.addFieldOffset(0, otherTag, 0);
+const otherOff = b.endObject();
+// payloads_type [ubyte] = [1, 2]
+b.startVector(1, 2, 1);
+b.addInt8(2); b.addInt8(1);   // reversed
+const payTags = b.endVector();
+const payVec = offsetVec([in2, otherOff]);
+
+// ids: Ids{a(id0)=5, c(id1)=6}
+b.startObject(2);
+b.addFieldInt32(0, 5, 0);      // a
+b.addFieldInt32(1, 6, 0);      // c
+const idsOff = b.endObject();
+
+// legacy: deprecated string field
+const legacyOff = b.createString('old');
+
+// TestTable: 33 field slots
+b.startObject(33);
 b.addFieldInt8(0, 1, 0);            // b:bool
 b.addFieldInt8(1, -8, 0);           // i8
 b.addFieldInt8(2, 200, 0);          // u8
@@ -84,6 +113,16 @@ b.writeInt8(-1);                    // a @0
 b.addFieldStruct(20, b.offset(), 0);
 b.addFieldInt64(21, BigInt('18446744073709551615'), BigInt(0)); // big64 = u64 max
 b.addFieldOffset(22, blob, 0);      // blob
+b.addFieldInt8(23, 7, 0);           // col = Blue
+b.addFieldInt8(24, 1, 0);           // payload_type = Inner
+b.addFieldOffset(25, in1, 0);       // payload (union -> in1, shared)
+b.addFieldOffset(26, payTags, 0);   // payloads_type = [Inner, Other]
+b.addFieldOffset(27, payVec, 0);    // payloads
+b.addFieldOffset(28, itemsVec, 0);  // items
+b.addFieldInt32(29, 7, 0);          // opt (optional scalar, set)
+b.addFieldOffset(30, legacyOff, 0); // legacy (deprecated)
+b.addFieldOffset(31, idsOff, 0);    // ids
+// slot 32 wide (vector64): not writable by the JS builder — left absent
 const root = b.endObject();
 b.finish(root);
 

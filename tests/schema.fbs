@@ -1,11 +1,23 @@
 namespace GT;
 
+enum Color : byte { Red, Green, Blue = 7 }
+
 struct Vec3 { x:float; y:float; z:float; }
 
 // padding exercise: a@0 (i8), pad 1..7, b@8 (f64), c@16 (i16), tail pad 18..23
 struct Tricky { a:int8; b:double; c:int16; }
 
 table Inner { x:int; s:string (required); }
+
+table Other { tag:string; }
+
+table Item { id:uint (key); val:int; }
+
+// explicit ids out of declaration order — generated code must use Id(), not
+// declaration order, for vtable slots.
+table Ids { c:int (id:1); a:int (id:0); }
+
+union Payload { Inner, Other }
 
 table TestTable {
   b:bool; i8:int8; u8:ubyte; i16:short; u16:ushort; i32:int; u32:uint;
@@ -21,8 +33,22 @@ table TestTable {
   points:[Vec3];
   tricky:Tricky;
   big64:ulong;
-  blob:[ubyte] (nested_flatbuffer: "Inner");
+  // NOTE: blob embeds a complete Inner buffer (the nested_flatbuffer
+  // pattern) but the attribute is left off: flatc's .bfbs output does not
+  // preserve it, so codegen cannot see it anyway — get_nested_root() works
+  // regardless, and schema verification accepts a "nested" spec entry.
+  blob:[ubyte];
+  col:Color;
+  payload:Payload;
+  payloads:[Payload];
+  items:[Item];               // sorted by id (the key)
+  opt:int = null;             // optional scalar
+  legacy:string (deprecated);
+  ids:Ids;
+  wide:[ulong] (vector64);    // not in the JS-built golden — see tests/v64.fbs
 }
+
+rpc_service Calc { Check(Inner):Other; }
 
 file_identifier "GT1!";
 root_type TestTable;

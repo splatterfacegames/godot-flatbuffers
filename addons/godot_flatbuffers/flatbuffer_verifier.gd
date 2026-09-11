@@ -26,6 +26,18 @@ extends RefCounted
 ##                                                    sibling tag field read
 ##                                                    from type_slot; member
 ##                                                    descs are table/string
+##   {"k": "union_vector", "type_slot": N, "members": {tag: <desc>}}
+##                                                    a [union] payload vector;
+##                                                    type_slot names the
+##                                                    sibling [ubyte] tag vector
+##   {"k": "vector64", "elem": <desc>}                (vector64): u64 field
+##                                                    offset, u64 length, elems
+##                                                    contiguous after it
+##   {"k": "off64",  "elem": <desc>}                  (offset64) string/vector:
+##                                                    u64 field offset, u32
+##                                                    length; "elem" like
+##                                                    "vector", or omit for a
+##                                                    string64 field
 ##
 ## Generated accessors expose this as `SomeTable.verify(buf)`.
 
@@ -171,6 +183,23 @@ static func _verify_field(buf: PackedByteArray, pos: int, vt: int, rel: int, obj
 			return true
 		"union":
 			return _verify_union(buf, pos, vt, fpos, d, depth)
+		"vector64":
+			var t := _off_target64(buf, fpos)
+			if t < 0 or t + 8 > buf.size():
+				return false
+			return _verify_vector64(buf, t, d.get("elem", {}), depth)
+		"union_vector":
+			return _verify_union_vector(buf, pos, vt, fpos, d, depth)
+		"off64":
+			var t := _off_target64(buf, fpos)
+			if t < 0:
+				return false
+			var elem: Variant = d.get("elem")
+			if elem == null:
+				return _check_string(buf, t)  # (offset64) string
+			if t + 4 > buf.size():
+				return false
+			return _verify_vector(buf, t, elem, depth)
 	return false
 
 static func _verify_vector(buf: PackedByteArray, t: int, elem: Variant, depth: int) -> bool:
@@ -224,6 +253,97 @@ static func _verify_union(buf: PackedByteArray, pos: int, vt: int, fpos: int, d:
 	if s is Dictionary:
 		return _verify_table(buf, t, s, depth + 1)
 	return _check_table(buf, t, depth + 1)
+
+static func _verify_vector64(buf: PackedByteArray, t: int, elem: Variant, depth: int) -> bool:
+	var n := buf.decode_u64(t)
+	if n > MAX_VECTOR_ELEMS:
+		return false
+	if not (elem is Dictionary):
+		return false
+	var base := t + 8  # u64 length prefix
+	match String(elem.get("k", "")):
+		"scalar", "struct":
+			return base + n * int(elem["size"]) <= buf.size()
+		"string", "table":
+			if base + n * 8 > buf.size():  # elements are u64 offsets
+				return false
+			for i in n:
+				var e := base + i * 8
+				var off := buf.decode_u64(e)
+				var tgt := e + off
+				if off <= 0 or tgt + 4 > buf.size():
+					return false
+				if String(elem["k"]) == "string":
+					if not _check_string(buf, tgt):
+						return false
+				else:
+					var s: Variant = elem.get("spec")
+					if s is Callable:
+						s = s.call()
+					if s is Dictionary:
+						if not _verify_table(buf, tgt, s, depth + 1):
+							return false
+					elif not _check_table(buf, tgt, depth + 1):
+						return false
+			return true
+	return false
+
+# A [union] field: two parallel vectors — sibling [ubyte] tags at type_slot
+# and payload offsets here. Lengths must match; each payload verifies
+# against the member spec its tag names.
+static func _verify_union_vector(buf: PackedByteArray, pos: int, vt: int, fpos: int, d: Dictionary, depth: int) -> bool:
+	var vt_len := buf.decode_u16(vt)
+	var tidx := 4 + int(d.get("type_slot", -1)) * 2
+	if tidx < 4 or tidx + 2 > vt_len:
+		return false
+	var trel := buf.decode_u16(vt + tidx)
+	var obj_len := buf.decode_u16(vt + 2)
+	if trel == 0 or trel + 4 > obj_len:
+		return false  # payload vector present without its tag vector
+	var tags := _off_target(buf, pos + trel)
+	var payloads := _off_target(buf, fpos)
+	if tags < 0 or payloads < 0:
+		return false
+	var n := buf.decode_u32(payloads)
+	var ntags := buf.decode_u32(tags)
+	if n != ntags or n > MAX_VECTOR_ELEMS:
+		return false
+	if tags + 4 + ntags > buf.size() or payloads + 4 + n * 4 > buf.size():
+		return false
+	for i in n:
+		var tag := buf.decode_u8(tags + 4 + i)
+		if tag == 0:
+			continue  # NONE element — no payload to verify
+		var m: Variant = d.get("members", {}).get(tag)
+		if not (m is Dictionary):
+			return false
+		var e := payloads + 4 + i * 4
+		var tgt := _off_target(buf, e)
+		if tgt < 0:
+			return false
+		if String(m.get("k", "")) == "string":
+			if not _check_string(buf, tgt):
+				return false
+			continue
+		var s: Variant = m.get("spec")
+		if s is Callable:
+			s = s.call()
+		if s is Dictionary:
+			if not _verify_table(buf, tgt, s, depth + 1):
+				return false
+		elif not _check_table(buf, tgt, depth + 1):
+			return false
+	return true
+
+# Absolute position of the object a uoffset64 field points at, or -1.
+static func _off_target64(buf: PackedByteArray, fpos: int) -> int:
+	if fpos + 8 > buf.size():
+		return -1
+	var off := buf.decode_u64(fpos)
+	if off <= 0:
+		return -1
+	var t := fpos + off
+	return t if t + 4 <= buf.size() else -1
 
 # Absolute position of the object a uoffset field points at, or -1.
 static func _off_target(buf: PackedByteArray, fpos: int) -> int:

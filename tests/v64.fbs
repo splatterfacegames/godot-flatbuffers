@@ -1,0 +1,11 @@
+namespace V64;
+
+// (vector64) vectors: u64 field offset, u64 length prefix, elements
+// contiguous after it. flatc -b produces the canonical layout when the
+// elements land 8-aligned (as here); see README for the flatc -b caveat
+// on non-aligned payloads.
+table Big {
+  d:[ubyte] (vector64);
+  idx:[int] (vector64);
+}
+root_type Big;

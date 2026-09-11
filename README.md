@@ -59,16 +59,97 @@ REFLECT_GEN=tools/reflection_gen python tools/generate_gd.py myproto.bfbs myprot
 ```
 
 Generated output: one file with a class per table (`get_root_as`, `wrap_fb`,
-per-field getters, `create_*` builder) and a class per enum of consts. Union
-fields expose `x()` returning the raw `FlatBuffer` — wrap it with the member
-type indicated by `x_type()`.
+per-field getters, `create_*` builder), a class per enum of consts (plus
+`name_of`/`value_of` string maps), object-API (`to_dict`/`from_dict`) and
+JSON (`to_json`/`from_json`) helpers on every table and struct, and a
+`<Service>Client` + `<Service>Server` pair per `rpc_service`.
 
 ```gdscript
-var req := TT.JoinReq.create_join_req(b, 42, b.create_string("tok"), b.create_string("Jetha"))
-var env := TT.Envelope.create_envelope(b, req, TT.TT_ClientMsg.JOINREQ, 1)
+var req := TT.JoinReq.create_join_req(b, b.create_string("Jetha"), 42, b.create_string("tok"))
+var env := TT.Envelope.create_envelope(b, 1, TT.TT_ClientMsg.JOINREQ, req)
 b.finish(env)
 peer.send(b.to_packed_byte_array())
 ```
+
+### Object API — `to_dict` / `from_dict`
+
+Every generated table and struct converts to/from a plain `Dictionary`:
+
+```gdscript
+var d := TT.Envelope.get_root_as(buf).to_dict()
+var b2 := FlatBufferBuilder.new()
+b2.finish(TT.Envelope.from_dict(b2, d))
+```
+
+Conventions: field names are verbatim; tables and structs nest as
+Dictionaries; vectors become Arrays; `[ubyte]`/`[byte]` become
+`PackedByteArray`; enum fields become their declared names (`"Blue"`);
+`ulong` fields keep the raw signed bit pattern (`-1` = u64 max — see the u64
+note; `from_dict` also accepts `"0x..."` hex and decimal strings); unions use
+flatc's shape `{"u_type": "MemberName", "u": {...}}`. Absent fields are
+simply missing keys; `from_dict` honors `required` fields the same way
+`create_*` does.
+
+### JSON — `to_json` / `from_json`
+
+`to_json()` stringifies the same shape `flatc --json --strict-json` produces:
+only fields present in the buffer are emitted, field names verbatim, enums
+as declared names, `ulong` as an unsigned decimal number, `[ubyte]` as an
+int array. Verified by parsing `flatc --json` output and deep-comparing.
+
+`from_json(text)` builds and returns a wrapped root. Caveat: a `ulong` value
+above `2^63-1` arrives through JSON as a float — it survives `to_json`→
+`from_json` within double precision but cannot be exactly recovered (use
+`to_dict`/`from_dict` with hex strings for exact round-trips).
+
+### Union ergonomics
+
+For `u:MyUnion` fields the generated class emits `u_as_<member>()` returning
+the typed wrapper (or `String` for string members; `null`/`""` when the tag
+doesn't match) and `u_unwrap()` returning whichever member `u_type()` names.
+Vector unions get `us_unwrap(i)`. The raw `FlatBuffer` accessor stays
+available as `u()`.
+
+### gRPC-style services
+
+`rpc_service S { M(Req):Res; }` generates `SClient`/`SServer`, transport
+agnostic — inject any `send(path, payload: PackedByteArray) -> PackedByteArray`:
+
+```gdscript
+class MyHandler:
+    func check(req, _b) -> Variant:
+        return {"tag": "ok"}          # Dictionary -> packed via Res.from_dict
+
+var server := GTS.CalcServer.new(MyHandler.new())
+var client := GTS.CalcClient.new(server.dispatch)   # in-process loopback
+var res := client.check(b, GTS.Inner.create_inner(b, 1, b.create_string("q")))
+```
+
+Method paths are `/<namespace>.<Service>/<Method>`; the handler may return a
+`Dictionary` (packed via `Res.from_dict`) or a table offset built on the
+supplied builder.
+
+### vector64 / offset64
+
+`(vector64)` fields (u64 field offset, u64 length prefix, elements
+contiguous after it — the canonical `FlatBufferBuilder64` layout) are fully
+supported: `create_*_vector64`/`start_*_vector64`/`end_vector64` on the
+builder, `vector64_len`/`get_vector64_*` readers, `add_offset64_field` for
+the 8-byte field offset, generated typed accessors, and verifier spec kind
+`"vector64"`. As upstream requires, all 64-bit objects must be serialized
+before any 32-bit object — the builder enforces this.
+
+`(offset64)` alone (on strings or 32-bit-length vectors) works via
+`add_offset64_field` + `get_string64`/`vector_len_off64`/`_vec_elem_off64`
+and spec kind `"off64"`.
+
+**Known upstream caveat (not ours):** `flatc -b` (JSON→binary) uses a
+32-bit-fallback path for vector64 that inserts an extra pad between the u64
+length and elements when the vector's own size is not 8-aligned, and flatc's
+`.bfbs` reflection output does not record the `offset64`/`nested_flatbuffer`
+attributes — so generated code can't auto-detect `offset64`-only fields
+(use the runtime API above) or auto-mark nested-buffer verification (pass a
+`"nested"` spec entry, as `tests/run_tests.gd` does).
 
 ## Runtime notes / limitations
 
@@ -99,10 +180,18 @@ peer.send(b.to_packed_byte_array())
 - **Byte vectors**: `create_byte_vector(PackedByteArray)` writes a `[ubyte]`
   directly; `get_vector_bytes(slot)` reads it back. `get_nested_root(slot)`
   returns a `FlatBuffer` rooted at a `nested_flatbuffer`-style embedded buffer.
-- Remaining gaps: no unpacked "object API" (`XxxT` data objects), no JSON/text
-  round-trip, no `vector64` (>4 GiB vectors), no gRPC service emission. Union
-  payloads expose the raw `FlatBuffer` — wrap it with the member type indicated
-  by `<field>_type()`.
+- **Sorted vectors / `key`**: for a `[table]` vector whose element table has a
+  `(key)` field, generated code emits `<field>_by_key(v)` — a binary search
+  over the sorted vector (flatc's `LookupByKey` parity).
+- **Optional scalars** (`x:int = null`): `has_<x>()` reports presence;
+  `create_*`/`from_dict` emit the field only when set.
+- **Deprecated fields** remain readable/writable (`flatc --json` emits them
+  too); **`(id: N)` attributes** are honored — all generated accessors are
+  keyed on the field's `Id`, not declaration order.
+- **Remaining gaps: none known.** The only documented caveats are the
+  upstream flatc ones noted under "vector64 / offset64" (`.bfbs` attribute
+  stripping, `flatc -b` padding quirk) and the JSON `ulong > 2^63-1`
+  precision note above.
 
 ## Testing
 
@@ -111,13 +200,16 @@ godot --headless --import          # once: builds the global class cache
 godot --headless --script tests/run_tests.gd
 ```
 
-Regenerate fixtures after changing `tests/schema.fbs`:
+Regenerate fixtures after changing `tests/schema.fbs` / `tests/v64.fbs`:
 
 ```sh
 cd tests/node && node gen_golden.mjs       # golden .bin vectors (npm i first)
-flatc --schema -b -o tests tests/schema.fbs
-python tools/generate_gd.py tests/schema.bfbs tests/gen_schema.gd --class-name GTS
-python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name FBSchema
+flatc --schema -b -o tests tests/schema.fbs tests/v64.fbs
+flatc -b -o tests/golden tests/v64.fbs tests/golden/v64_input.json   # test5_v64.bin
+flatc --json --strict-json --raw-binary -o tests/golden tests/schema.fbs -- tests/golden/test1.bin
+python tools/generate_gd.py tests/schema.bfbs tests/gen_schema.gd --class-name FBSchema
+python tools/generate_gd.py tests/v64.bfbs tests/gen_v64.gd --class-name FBV64Schema
+python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name FBTTSchema
 ```
 
 ## License
