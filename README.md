@@ -8,9 +8,10 @@ project and it works on every platform Godot exports to (desktop, mobile, web).
 
 | File | Purpose |
 |---|---|
-| `addons/godot_flatbuffers/flatbuffer.gd` | `FlatBuffer` — read-side view over a table (scalars, strings, subtables, vectors, unions) |
+| `addons/godot_flatbuffers/flatbuffer.gd` | `FlatBuffer` — read-side view over a table (scalars, strings, subtables, vectors, unions, structs, nested buffers) |
+| `addons/godot_flatbuffers/flatbuffer_struct.gd` | `FlatBufferStruct` — read-side view over an inline struct (fixed layout, no vtable) |
 | `addons/godot_flatbuffers/flatbuffer_builder.gd` | `FlatBufferBuilder` — canonical back-to-front buffer construction with vtable dedup |
-| `addons/godot_flatbuffers/flatbuffer_verifier.gd` | `FlatBufferVerifier` — structural bounds-checking for untrusted buffers |
+| `addons/godot_flatbuffers/flatbuffer_verifier.gd` | `FlatBufferVerifier` — structural bounds-checking plus schema-aware verification for untrusted buffers |
 | `tools/generate_gd.py` | `.bfbs` → typed `.gd` accessor generator (uses flatc's own binary reflection) |
 
 The builder is verified **byte-identical** against the official JS
@@ -74,9 +75,34 @@ peer.send(b.to_packed_byte_array())
 - Field access is by **vtable slot index** (the `Id` flatc assigns), which the
   generator bakes into typed getters — you never write raw slots by hand when
   using generated code.
-- Structs are not yet supported (tables-only schemas).
-- `u64` values above `2^63-1` cannot be represented by GDScript's signed `int`.
-- The verifier is structural (bounds/offsets), not schema-aware.
+- **Structs** are supported: `get_struct(slot)` / `get_vector_struct(slot, i, size)`
+  return a `FlatBufferStruct` view; generated code emits typed struct accessors,
+  an inline `create_<struct>(b, ...)` packer (wired into table builders via
+  `add_struct_field`), and `create_<struct>_vector` / `start_<field>_vector`
+  helpers. Nested struct members and fixed-size arrays inside structs work.
+- **`u64` above `2^63-1`**: GDScript `int` is signed 64-bit, so `get_u64` /
+  `add_u64_field` cover values up to `i64::MAX`; beyond that they expose the raw
+  bit pattern as a negative int. Use `get_u64_hex` / `get_u64_bytes` (read) and
+  `add_u64_hex_field` / `write_u64_hex` (write) for the full unsigned range;
+  generated code emits `<field>_hex()` accessors for `ulong` fields.
+- **Verifier**: `FlatBufferVerifier.verify()` is the schema-free structural
+  bounds-check. Generated `SomeTable.verify(buf)` adds schema-aware verification
+  (field sizes, string NUL terminators, vector contents, nested tables, union
+  tag/payload consistency) via `verify_root(buf, _spec())`.
+- **Size-prefixed buffers** (`flatc --size-prefixed`): `builder.finish(root, fid,
+  true)` / `finish_size_prefixed` on write; `FlatBuffer.root_size_prefixed`,
+  `FlatBufferVerifier.verify_size_prefixed`, and generated
+  `get_size_prefixed_root_as` on read.
+- **`force_defaults` schemas**: set `builder.force_defaults = true` or pass
+  `force := true` to any `add_*_field`; `has_field(slot)` distinguishes an
+  explicitly-stored default from an absent field.
+- **Byte vectors**: `create_byte_vector(PackedByteArray)` writes a `[ubyte]`
+  directly; `get_vector_bytes(slot)` reads it back. `get_nested_root(slot)`
+  returns a `FlatBuffer` rooted at a `nested_flatbuffer`-style embedded buffer.
+- Remaining gaps: no unpacked "object API" (`XxxT` data objects), no JSON/text
+  round-trip, no `vector64` (>4 GiB vectors), no gRPC service emission. Union
+  payloads expose the raw `FlatBuffer` — wrap it with the member type indicated
+  by `<field>_type()`.
 
 ## Testing
 
@@ -85,8 +111,14 @@ godot --headless --import          # once: builds the global class cache
 godot --headless --script tests/run_tests.gd
 ```
 
-Regenerate goldens with `cd tests/node && node gen_golden.mjs`
-(`npm i` first in `tests/node`).
+Regenerate fixtures after changing `tests/schema.fbs`:
+
+```sh
+cd tests/node && node gen_golden.mjs       # golden .bin vectors (npm i first)
+flatc --schema -b -o tests tests/schema.fbs
+python tools/generate_gd.py tests/schema.bfbs tests/gen_schema.gd --class-name GTS
+python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name FBSchema
+```
 
 ## License
 

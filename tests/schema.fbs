@@ -1,6 +1,11 @@
 namespace GT;
 
-table Inner { x:int; s:string; }
+struct Vec3 { x:float; y:float; z:float; }
+
+// padding exercise: a@0 (i8), pad 1..7, b@8 (f64), c@16 (i16), tail pad 18..23
+struct Tricky { a:int8; b:double; c:int16; }
+
+table Inner { x:int; s:string (required); }
 
 table TestTable {
   b:bool; i8:int8; u8:ubyte; i16:short; u16:ushort; i32:int; u32:uint;
@@ -12,6 +17,12 @@ table TestTable {
   inners:[Inner];
   with_default:int = 42;
   absent_defaulted:string;   // left unset -> default path
+  pos:Vec3;
+  points:[Vec3];
+  tricky:Tricky;
+  big64:ulong;
+  blob:[ubyte];
 }
 
+file_identifier "GT1!";
 root_type TestTable;
