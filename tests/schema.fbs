@@ -21,7 +21,7 @@ table TestTable {
   points:[Vec3];
   tricky:Tricky;
   big64:ulong;
-  blob:[ubyte];
+  blob:[ubyte] (nested_flatbuffer: "Inner");
 }
 
 file_identifier "GT1!";

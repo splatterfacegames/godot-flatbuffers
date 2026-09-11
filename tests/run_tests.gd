@@ -76,9 +76,10 @@ func _init() -> void:
 	ok(gt.big64_hex() == "0xffffffffffffffff", "generated big64_hex")
 
 	print("== byte vector / nested root ==")
-	ok(t.vector_len(22) == 4, "blob len 4")
-	ok(t.get_vector_bytes(22) == PackedByteArray([0xde, 0xad, 0xbe, 0xef]), "blob bytes")
-	ok(gt.blob_bytes() == PackedByteArray([0xde, 0xad, 0xbe, 0xef]), "generated blob_bytes")
+	var emb0: FB = t.get_nested_root(22)
+	ok(emb0 != null and emb0.get_i32(0) == 99 and emb0.get_string(1) == "nested",
+		"blob is a nested Inner buffer (nested_flatbuffer)")
+	ok(gt.blob_len() > 4, "generated blob_len")
 
 	print("== size-prefixed + file identifier ==")
 	var sp := FileAccess.get_file_as_bytes("res://tests/golden/test3_sizeprefixed.bin")
@@ -268,6 +269,18 @@ func _init() -> void:
 	var nrel := cor.decode_u16(nvt + 4 + 11 * 2)   # name field
 	cor.encode_u32(npos + nrel, 0xFFFFFFF0)        # wild uoffset on 'name'
 	ok(not GTS.TestTable.verify(cor), "schema verify rejects wild string offset")
+	# corrupt the nested buffer's root offset inside the blob vector.
+	# (flatc drops nested_flatbuffer from .bfbs attributes, so the "nested"
+	# spec piece is hand-written here — the generator emits it when present.)
+	var cor2 := PackedByteArray(bytes)
+	var brel := cor2.decode_u16(nvt + 4 + 22 * 2)  # blob field
+	var bpos := npos + brel + cor2.decode_u32(npos + brel)  # vector data start
+	var nested_spec := {22: {"k": "vector", "elem": {"k": "scalar", "size": 1},
+		"nested": Callable(GTS.Inner, "_spec")}}
+	ok(FBV.verify_root(bytes, nested_spec), "nested_flatbuffer spec verifies embedded buffer")
+	cor2.encode_u32(bpos + 4, 0xFFFFFFF0)          # nested root uoffset -> wild
+	ok(not FBV.verify_root(cor2, nested_spec), "nested spec rejects corrupt embedded buffer")
+	ok(FBV.verify(cor2), "structural verify ignores nested payload")
 
 	print("")
 	if failures == 0:
@@ -292,7 +305,15 @@ func _rebuild() -> PackedByteArray:
 	b.start_vector(4, 5, 4)
 	for v in [5, 4, 3, 2, 1]: b.prepend_i32(v)
 	var nums_vec := b.end_vector()
-	var blob := b.create_byte_vector(PackedByteArray([0xde, 0xad, 0xbe, 0xef]))
+	# blob = nested flatbuffer (a finished Inner buffer embedded as bytes);
+	# write fields in the same order as gen_golden.mjs for byte-identity
+	var ib2 := FBB.new()
+	var ns := ib2.create_string("nested")
+	ib2.start_table(2)
+	ib2.add_i32_field(0, 99, 0)
+	ib2.add_offset_field(1, ns, 0)
+	ib2.finish(ib2.end_table())
+	var blob := b.create_byte_vector(ib2.to_packed_byte_array())
 	var points_vec := GTS.Vec3.create_vec3_vector(b, [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
 	b.start_table(23)

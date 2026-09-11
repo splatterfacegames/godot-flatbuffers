@@ -18,7 +18,10 @@ extends RefCounted
 ##   {"k": "struct", "size": N}                       inline struct field
 ##   {"k": "vector", "elem": <desc>}                  elem desc per above;
 ##                                                    offset elems verified
-##                                                    per element
+##                                                    per element; a [ubyte]
+##                                                    vector may add
+##                                                    "nested": <spec|Callable>
+##                                                    (nested_flatbuffer)
 ##   {"k": "union",  "type_slot": N, "members": {tag: <desc>}}
 ##                                                    sibling tag field read
 ##                                                    from type_slot; member
@@ -156,7 +159,18 @@ static func _verify_field(buf: PackedByteArray, pos: int, vt: int, rel: int, obj
 			var t := _off_target(buf, fpos)
 			if t < 0 or t + 4 > buf.size():
 				return false
-			return _verify_vector(buf, t, d.get("elem", {}), depth)
+			if not _verify_vector(buf, t, d.get("elem", {}), depth):
+				return false
+			# nested_flatbuffer: the [ubyte] payload is itself a buffer
+			var ns: Variant = d.get("nested")
+			if ns is Callable:
+				ns = ns.call()
+			if ns is Dictionary:
+				var nb := t + 4
+				var nroot := nb + buf.decode_u32(nb)
+				if nroot < nb + 4 or not _verify_table(buf, nroot, ns, depth + 1):
+					return false
+			return true
 		"union":
 			return _verify_union(buf, pos, vt, fpos, d, depth)
 	return false

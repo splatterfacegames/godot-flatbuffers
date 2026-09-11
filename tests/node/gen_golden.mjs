@@ -33,8 +33,16 @@ b.startVector(4, 5, 4);
 for (const v of [5, 4, 3, 2, 1]) b.addInt32(v);  // reversed
 const numsVec = b.endVector();
 
-// blob byte vector
-const blob = b.createByteVector(new Uint8Array([0xde, 0xad, 0xbe, 0xef]));
+// blob = nested flatbuffer: a complete Inner buffer embedded as [ubyte]
+const b5 = new Builder(64);
+{
+  const s = b5.createString('nested');
+  b5.startObject(2);
+  b5.addFieldInt32(0, 99, 0);
+  b5.addFieldOffset(1, s, 0);
+  b5.finish(b5.endObject());
+}
+const blob = b.createByteVector(b5.asUint8Array());
 
 // points [Vec3]: elements (1,0,0) and (0,1,0), written reversed;
 // each Vec3 packs as prep(4,12) + writeFloat32(z,y,x)

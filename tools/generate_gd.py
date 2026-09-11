@@ -141,8 +141,19 @@ def field_desc(f, fields_by_name, objects, obj_by_index, enums):
         return ('{"k": "union", "type_slot": %d, "members": {%s}}'
                 % (type_slot, ", ".join(members)))
     if bt == BaseType.Vector:
-        return '{"k": "vector", "elem": %s}' % elem_desc(
+        d = '{"k": "vector", "elem": %s}' % elem_desc(
             f.Type().Element(), f.Type(), obj_by_index)
+        # nested_flatbuffer: "Type" attribute naming the embedded root table
+        for i in range(f.AttributesLength()):
+            a = f.Attributes(i)
+            if a.Key() == b"nested_flatbuffer":
+                want = a.Value().decode().strip('"').split(".")[-1]
+                for o in objects:
+                    if o.Name().decode().split(".")[-1] == want:
+                        tn = safe(want)
+                        d = d[:-1] + ', "nested": Callable(%s, "_spec")}' % tn
+                        break
+        return d
     if bt in SCALAR:
         return '{"k": "scalar", "size": %d}' % SCALAR[bt][2]
     return None
