@@ -1,0 +1,17 @@
+namespace GT;
+
+table Inner { x:int; s:string; }
+
+table TestTable {
+  b:bool; i8:int8; u8:ubyte; i16:short; u16:ushort; i32:int; u32:uint;
+  i64:long; u64:ulong; f32:float; f64:double;
+  name:string;
+  nums:[int];
+  strs:[string];
+  inner:Inner;
+  inners:[Inner];
+  with_default:int = 42;
+  absent_defaulted:string;   // left unset -> default path
+}
+
+root_type TestTable;

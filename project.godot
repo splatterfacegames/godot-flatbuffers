@@ -1,0 +1,13 @@
+; Godot 4 project for developing/testing the addon.
+; Consumers copy addons/godot_flatbuffers/ into their own project.
+
+config_version=5
+
+[application]
+
+config/name="godot-flatbuffers"
+run/main_scene=""
+
+[editor]
+
+run/main_run_args="--headless"
