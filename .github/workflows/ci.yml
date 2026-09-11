@@ -36,10 +36,10 @@ jobs:
           flatc --schema -b -o tests tests/schema.fbs tests/v64.fbs
           flatc --python -o /tmp/reflectgen tests/reflection.fbs
           export REFLECT_GEN=/tmp/reflectgen
-          python tools/generate_gd.py tests/schema.bfbs tests/gen_schema.gd
-          python tools/generate_gd.py tests/v64.bfbs tests/gen_v64.gd
-          python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name TT
+          python tools/generate_gd.py tests/schema.bfbs tests/gen_schema.gd --class-name FBSchema
+          python tools/generate_gd.py tests/v64.bfbs tests/gen_v64.gd --class-name FBV64Schema
+          python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name FBTTSchema
       - name: Run GDScript test suite
         run: |
           godot --headless --import
-          godot --headless --script tests/run_tests.gd
+          timeout 300 godot --headless --script tests/run_tests.gd
