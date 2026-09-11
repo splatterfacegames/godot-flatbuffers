@@ -19,6 +19,7 @@ var _vector_count := 0
 var _written_vtables: Dictionary = {}  # vtable bytes (hex str) -> builder offset
 var _shared_strings: Dictionary = {}   # create_shared_string dedup
 var _nested := false
+var _wrote_32 := false    # a 32-bit-addressable object was written
 var _capacity := 1024
 
 ## When true, add_*_field emits fields even when v == default
@@ -44,6 +45,7 @@ func reset() -> void:
 	_written_vtables.clear()
 	_shared_strings.clear()
 	_nested = false
+	_wrote_32 = false
 
 ## Bytes used so far == distance from end of buffer.
 func offset() -> int:
@@ -91,6 +93,13 @@ func _put_uoffset(target: int) -> void:
 	prep(4, 0)
 	_space -= 4
 	_bb.encode_u32(_space, offset() - target)
+
+# uoffset64: 8-byte forward offset (offset64/vector64 fields). Relative to
+# the tail of the whole buffer, so it can address anywhere.
+func _put_uoffset64(target: int) -> void:
+	prep(8, 0)
+	_space -= 8
+	_bb.encode_u64(_space, offset() - target)
 
 ## Write `n` zero bytes (explicit struct/vector padding, per the canonical impl).
 ## Distinct from prep() padding: pad() output is part of the object.
@@ -172,6 +181,7 @@ func create_string(s: String) -> int:
 	for i in n:
 		_bb[_space + i] = bs[i]
 	_put_u32(n)                   # length prefix (lowest address)
+	_wrote_32 = true
 	return offset()
 
 ## create_string with dedup: repeated strings return the first offset.
@@ -199,6 +209,7 @@ func end_vector() -> int:
 		return 0
 	_put_u32(_vector_count)
 	_nested = false
+	_wrote_32 = true
 	return offset()
 
 ## Convenience: vector of uoffsets to previously built objects.
@@ -284,6 +295,148 @@ func create_f64_vector(vals: Array) -> int:
 	for i in range(vals.size() - 1, -1, -1):
 		write_f64(vals[i])
 	return end_vector()
+
+# ── offset64 / vector64 (64-bit region) ─────────────────────
+#
+# Canonical layout (C++ FlatBufferBuilder64 / Vector<T,uoffset64_t>):
+# the field stores a u64 forward offset; a vector64 is a u64 length
+# followed immediately by its elements. All 64-bit-addressable objects
+# must be serialized before any 32-bit object (they form the tail
+# "64-bit region") — start_vector64/end_vector64/create_*_vector64
+# enforce this.
+
+func _check_can_write_64(what: String) -> bool:
+	if _wrote_32:
+		push_error("flatbuffers: cannot create %s after 32-bit objects exist" % what)
+		return false
+	return true
+
+## Same wire bytes as create_string but lands in the 64-bit region: use for
+## strings referenced by `offset64` fields or vector64-of-strings elements.
+## Must be called before any 32-bit object is created.
+func create_string64(s: String) -> int:
+	if not _check_can_write_64("a string64"):
+		return 0
+	var bs := s.to_utf8_buffer()
+	var n := bs.size()
+	prep(4, n + 1)
+	_put_u8(0)
+	_space -= n
+	for i in n:
+		_bb[_space + i] = bs[i]
+	_put_u32(n)
+	return offset()
+
+func _put_uoffset64_field(i: int, off: int) -> void:
+	_put_uoffset64(off)
+	_slot(i)
+
+## Field referencing an `(offset64)`/`(vector64)` object (u64 offset).
+func add_offset64_field(i: int, off: int, d := 0, force := false) -> void:
+	if off != d or force or force_defaults:
+		_put_uoffset64(off)
+		_slot(i)
+
+## Begin a `(vector64)` vector: u64 length prefix, elements contiguous.
+func start_vector64(elem_size: int, count: int, alignment: int) -> void:
+	if not _check_can_write_64("a vector64") or not _check_not_nested("a vector64"):
+		return
+	prep(8, elem_size * count)          # keep the u64 length 8-aligned
+	prep(alignment, elem_size * count)  # element alignment
+	_vector_count = count
+	_nested = true
+
+func end_vector64() -> int:
+	if not _check_nested("end_vector64"):
+		return 0
+	prep(8, 0)
+	_put_u64(_vector_count)
+	_nested = false
+	return offset()
+
+## `[ubyte]`/`[byte] (vector64)` straight from a PackedByteArray.
+func create_byte_vector64(bytes: PackedByteArray) -> int:
+	if not _check_can_write_64("a byte vector64"):
+		return 0
+	var n := bytes.size()
+	start_vector64(1, n, 1)
+	_space -= n
+	for i in n:
+		_bb[_space + i] = bytes[i]
+	return end_vector64()
+
+func create_bool_vector64(vals: Array) -> int:
+	start_vector64(1, vals.size(), 1)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u8(1 if vals[i] else 0)
+	return end_vector64()
+
+func create_i8_vector64(vals: Array) -> int:
+	start_vector64(1, vals.size(), 1)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u8(vals[i])
+	return end_vector64()
+
+func create_u8_vector64(vals: Array) -> int:
+	start_vector64(1, vals.size(), 1)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u8(vals[i])
+	return end_vector64()
+
+func create_i16_vector64(vals: Array) -> int:
+	start_vector64(2, vals.size(), 2)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u16(vals[i])
+	return end_vector64()
+
+func create_u16_vector64(vals: Array) -> int:
+	start_vector64(2, vals.size(), 2)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u16(vals[i])
+	return end_vector64()
+
+func create_i32_vector64(vals: Array) -> int:
+	start_vector64(4, vals.size(), 4)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u32(vals[i])
+	return end_vector64()
+
+func create_u32_vector64(vals: Array) -> int:
+	start_vector64(4, vals.size(), 4)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u32(vals[i])
+	return end_vector64()
+
+func create_i64_vector64(vals: Array) -> int:
+	start_vector64(8, vals.size(), 8)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u64(vals[i])
+	return end_vector64()
+
+func create_u64_vector64(vals: Array) -> int:
+	start_vector64(8, vals.size(), 8)
+	for i in range(vals.size() - 1, -1, -1):
+		_put_u64(vals[i])
+	return end_vector64()
+
+func create_f32_vector64(vals: Array) -> int:
+	start_vector64(4, vals.size(), 4)
+	for i in range(vals.size() - 1, -1, -1):
+		write_f32(vals[i])
+	return end_vector64()
+
+func create_f64_vector64(vals: Array) -> int:
+	start_vector64(8, vals.size(), 8)
+	for i in range(vals.size() - 1, -1, -1):
+		write_f64(vals[i])
+	return end_vector64()
+
+## Convenience: `(vector64)` of uoffset64 elements to already-built objects.
+func create_offset64_vector(offsets: Array) -> int:
+	start_vector64(8, offsets.size(), 8)
+	for i in range(offsets.size() - 1, -1, -1):
+		_put_uoffset64(offsets[i])
+	return end_vector64()
 
 # ── tables ──────────────────────────────────────────────────
 
@@ -399,6 +552,7 @@ func end_table() -> int:
 	# patch soffset at table start: signed distance table→vtable
 	_bb.encode_s32(_bb.size() - tbl, vt_off - tbl)
 	_nested = false
+	_wrote_32 = true
 	return tbl
 
 # ── finish ──────────────────────────────────────────────────

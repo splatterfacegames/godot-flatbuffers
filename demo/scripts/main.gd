@@ -149,8 +149,8 @@ func _build_packet() -> PackedByteArray:
 			mtype = GEN.Demo_DemoMsg.CHATMSG
 			moff = GEN.ChatMsg.create_chat_msg(b,
 				b.create_string(field_edits.author.text),
-				int(field_edits.sent_at.text),
-				b.create_string(field_edits.text.text))
+				b.create_string(field_edits.text.text),
+				int(field_edits.sent_at.text))
 		1:
 			mtype = GEN.Demo_DemoMsg.MOVEMSG
 			var chain: Array = []
@@ -158,8 +158,8 @@ func _build_packet() -> PackedByteArray:
 				if p.strip_edges() != "": chain.append(int(p))
 			var coff := b.create_u8_vector(chain)
 			moff = GEN.MoveMsg.create_move_msg(b,
-				int(field_edits.card_id.text), coff,
-				int(field_edits.from_cell.text), int(field_edits.to_cell.text))
+				int(field_edits.from_cell.text), int(field_edits.to_cell.text),
+				int(field_edits.card_id.text), coff)
 		2:
 			mtype = GEN.Demo_DemoMsg.SPAWNMSG
 			var tag_offs: Array = []
@@ -171,12 +171,12 @@ func _build_packet() -> PackedByteArray:
 				if p.strip_edges() != "": pos.append(float(p))
 			while pos.size() < 3: pos.append(0.0)
 			moff = GEN.SpawnMsg.create_spawn_msg(b,
-				b.create_string(field_edits.name.text), pos,
-				float(field_edits.score.text),
-				field_edits.shape.selected, toff)
-	# create_packet(b, msg_off, msg_type, sent_by_off, seq)
-	var pkt := GEN.Packet.create_packet(b, moff, mtype,
-		b.create_string(sent_by_edit.text), int(seq_edit.text))
+				b.create_string(field_edits.name.text),
+				field_edits.shape.selected,
+				float(field_edits.score.text), pos, toff)
+	# create_packet(b, seq, sent_by_off, msg_type, msg_off)
+	var pkt := GEN.Packet.create_packet(b, int(seq_edit.text),
+		b.create_string(sent_by_edit.text), mtype, moff)
 	b.finish(pkt)
 	return b.to_packed_byte_array()
 
@@ -218,7 +218,8 @@ func _on_bench() -> void:
 
 func _decode_packet(buf: PackedByteArray) -> String:
 	var p = GEN.Packet.get_root_as(buf)
-	var lines := ["Packet seq=%d sent_by='%s' msg_type=%d" % [p.seq(), p.sent_by(), p.msg_type()]]
+	var lines := ["Packet seq=%d sent_by='%s' msg_type=%d" % [p.seq(), p.sent_by(), p.msg_type()],
+		"json: " + p.to_json()]
 	match p.msg_type():
 		GEN.Demo_DemoMsg.CHATMSG:
 			var m = GEN.ChatMsg.wrap_fb(p.msg())

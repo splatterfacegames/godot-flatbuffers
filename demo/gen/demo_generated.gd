@@ -11,11 +11,19 @@ class Demo_DemoMsg:
 	const CHATMSG = 1
 	const MOVEMSG = 2
 	const SPAWNMSG = 3
+	const _NAMES := {0: "NONE", 1: "ChatMsg", 2: "MoveMsg", 3: "SpawnMsg"}
+	const _VALUES := {"NONE": 0, "ChatMsg": 1, "MoveMsg": 2, "SpawnMsg": 3}
+	static func name_of(v: int) -> String: return str(_NAMES.get(v, ""))
+	static func value_of(n: String) -> int: return int(_VALUES.get(n, 0))
 
 class Demo_Shape:
 	const CIRCLE = 0
 	const SQUARE = 1
 	const TRIANGLE = 2
+	const _NAMES := {0: "Circle", 1: "Square", 2: "Triangle"}
+	const _VALUES := {"Circle": 0, "Square": 1, "Triangle": 2}
+	static func name_of(v: int) -> String: return str(_NAMES.get(v, ""))
+	static func value_of(n: String) -> int: return int(_VALUES.get(n, 0))
 
 class ChatMsg:
 	var _t: FlatBuffer_
@@ -32,18 +40,62 @@ class ChatMsg:
 	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
 		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
 	static func _spec() -> Dictionary:
-		return {0: {"k": "string"}, 2: {"k": "scalar", "size": 8}, 1: {"k": "string"}}
+		return {0: {"k": "string"}, 1: {"k": "string"}, 2: {"k": "scalar", "size": 8}}
 	func author() -> String: return _t.get_string(0)
+	func text() -> String: return _t.get_string(1)
 	func sent_at() -> Variant: return _t.get_u64(2, 0)
 	func sent_at_hex() -> String: return _t.get_u64_hex(2, "0x0")
-	func text() -> String: return _t.get_string(1)
 
-	static func create_chat_msg(__b: FlatBufferBuilder_, author_off: int = 0, sent_at: int = 0, text_off: int = 0) -> int:
+	static func create_chat_msg(__b: FlatBufferBuilder_, author_off: int = 0, text_off: int = 0, sent_at: int = 0) -> int:
 		__b.start_table(3)
 		__b.add_offset_field(0, author_off, 0)
-		__b.add_u64_field(2, sent_at, 0)
 		__b.add_offset_field(1, text_off, 0)
+		__b.add_u64_field(2, sent_at, 0)
 		return __b.end_table()
+
+	## Object API: unpack to a plain Dictionary (field names
+	## verbatim; tables/structs nest; unions become
+	## {"x_type": "Name", "x": {...}}; ulong fields return the
+	## raw signed bit pattern (hex via <f>_hex()); byte vectors
+	## return PackedByteArray; enums return declared names.
+	func to_dict() -> Dictionary:
+		var __d := {}
+		if _t.has_field(0): __d["author"] = author()
+		if _t.has_field(1): __d["text"] = text()
+		__d["sent_at"] = sent_at()
+		return __d
+
+	## flatc --json-shaped Dictionary (ulong as unsigned number,
+	## byte vectors as int arrays). to_json() stringifies it.
+	func _json_dict() -> Dictionary:
+		var __d := {}
+		if _t.has_field(0): __d["author"] = author()
+		if _t.has_field(1): __d["text"] = text()
+		if _t.has_field(2): __d["sent_at"] = FlatBuffer_.u64_json(sent_at())
+		return __d
+
+	func to_json() -> String: return JSON.stringify(_json_dict())
+
+	## Pack a Dictionary back into `__b`, returning the table offset.
+	## Children are built first; absent keys leave fields unset.
+	static func from_dict(__b: FlatBufferBuilder_, __d: Dictionary) -> int:
+		var __v_author := 0
+		if __d.has("author"): __v_author = __b.create_string(str(__d["author"]))
+		var __v_text := 0
+		if __d.has("text"): __v_text = __b.create_string(str(__d["text"]))
+		__b.start_table(3)
+		__b.add_offset_field(0, __v_author, 0)
+		__b.add_offset_field(1, __v_text, 0)
+		__b.add_u64_field(2, FlatBuffer_.u64_from(__d.get("sent_at", 0)), 0)
+		return __b.end_table()
+
+	## Build a finished buffer from flatc --json-compatible text.
+	static func from_json(text: String) -> ChatMsg:
+		var __d: Variant = JSON.parse_string(text)
+		if not (__d is Dictionary): return null
+		var __b := FlatBufferBuilder_.new()
+		__b.finish(from_dict(__b, __d))
+		return get_root_as(__b.to_packed_byte_array())
 
 class MoveMsg:
 	var _t: FlatBuffer_
@@ -60,24 +112,71 @@ class MoveMsg:
 	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
 		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
 	static func _spec() -> Dictionary:
-		return {2: {"k": "scalar", "size": 4}, 3: {"k": "vector", "elem": {"k": "scalar", "size": 1}}, 0: {"k": "scalar", "size": 1}, 1: {"k": "scalar", "size": 1}}
+		return {0: {"k": "scalar", "size": 1}, 1: {"k": "scalar", "size": 1}, 2: {"k": "scalar", "size": 4}, 3: {"k": "vector", "elem": {"k": "scalar", "size": 1}}}
+	func from_cell() -> Variant: return _t.get_u8(0, 0)
+	func to_cell() -> Variant: return _t.get_u8(1, 0)
 	func card_id() -> Variant: return _t.get_u32(2, 0)
 	func combo_chain_len() -> int: return _t.vector_len(3)
 	func combo_chain(i: int) -> Variant: return _t.get_vector_u8(3, i)
 	func combo_chain_bytes() -> PackedByteArray: return _t.get_vector_bytes(3)
-	func from_cell() -> Variant: return _t.get_u8(0, 0)
-	func to_cell() -> Variant: return _t.get_u8(1, 0)
 	static func create_combo_chain_vector(__b: FlatBufferBuilder_, data: Variant) -> int:
 		return __b.create_byte_vector(data) if data is PackedByteArray else __b.create_u8_vector(data)
 	static func start_combo_chain_vector(__b: FlatBufferBuilder_, n: int) -> void: __b.start_vector(1, n, 1)
 
-	static func create_move_msg(__b: FlatBufferBuilder_, card_id: int = 0, combo_chain_off: int = 0, from_cell: int = 0, to_cell: int = 0) -> int:
+	static func create_move_msg(__b: FlatBufferBuilder_, from_cell: int = 0, to_cell: int = 0, card_id: int = 0, combo_chain_off: int = 0) -> int:
 		__b.start_table(4)
-		__b.add_u32_field(2, card_id, 0)
-		__b.add_offset_field(3, combo_chain_off, 0)
 		__b.add_u8_field(0, from_cell, 0)
 		__b.add_u8_field(1, to_cell, 0)
+		__b.add_u32_field(2, card_id, 0)
+		__b.add_offset_field(3, combo_chain_off, 0)
 		return __b.end_table()
+
+	## Object API: unpack to a plain Dictionary (field names
+	## verbatim; tables/structs nest; unions become
+	## {"x_type": "Name", "x": {...}}; ulong fields return the
+	## raw signed bit pattern (hex via <f>_hex()); byte vectors
+	## return PackedByteArray; enums return declared names.
+	func to_dict() -> Dictionary:
+		var __d := {}
+		__d["from_cell"] = from_cell()
+		__d["to_cell"] = to_cell()
+		__d["card_id"] = card_id()
+		if _t.has_field(3): __d["combo_chain"] = combo_chain_bytes()
+		return __d
+
+	## flatc --json-shaped Dictionary (ulong as unsigned number,
+	## byte vectors as int arrays). to_json() stringifies it.
+	func _json_dict() -> Dictionary:
+		var __d := {}
+		if _t.has_field(0): __d["from_cell"] = from_cell()
+		if _t.has_field(1): __d["to_cell"] = to_cell()
+		if _t.has_field(2): __d["card_id"] = card_id()
+		if _t.has_field(3): __d["combo_chain"] = Array(combo_chain_bytes())
+		return __d
+
+	func to_json() -> String: return JSON.stringify(_json_dict())
+
+	## Pack a Dictionary back into `__b`, returning the table offset.
+	## Children are built first; absent keys leave fields unset.
+	static func from_dict(__b: FlatBufferBuilder_, __d: Dictionary) -> int:
+		var __v_combo_chain := 0
+		if __d.has("combo_chain"):
+			var v: Variant = __d["combo_chain"]
+			__v_combo_chain = __b.create_byte_vector(v) if v is PackedByteArray else __b.create_u8_vector(v)
+		__b.start_table(4)
+		__b.add_u8_field(0, __d.get("from_cell", 0), 0)
+		__b.add_u8_field(1, __d.get("to_cell", 0), 0)
+		__b.add_u32_field(2, __d.get("card_id", 0), 0)
+		__b.add_offset_field(3, __v_combo_chain, 0)
+		return __b.end_table()
+
+	## Build a finished buffer from flatc --json-compatible text.
+	static func from_json(text: String) -> MoveMsg:
+		var __d: Variant = JSON.parse_string(text)
+		if not (__d is Dictionary): return null
+		var __b := FlatBufferBuilder_.new()
+		__b.finish(from_dict(__b, __d))
+		return get_root_as(__b.to_packed_byte_array())
 
 class Packet:
 	var _t: FlatBuffer_
@@ -94,19 +193,87 @@ class Packet:
 	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
 		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
 	static func _spec() -> Dictionary:
-		return {3: {"k": "union", "type_slot": 2, "members": {1: {"k": "table", "spec": Callable(ChatMsg, "_spec")}, 2: {"k": "table", "spec": Callable(MoveMsg, "_spec")}, 3: {"k": "table", "spec": Callable(SpawnMsg, "_spec")}}}, 2: {"k": "scalar", "size": 1}, 1: {"k": "string"}, 0: {"k": "scalar", "size": 4}}
-	func msg() -> FlatBuffer_: return _t.get_table(3)
-	func msg_type() -> Variant: return _t.get_u8(2, 0)
-	func sent_by() -> String: return _t.get_string(1)
+		return {0: {"k": "scalar", "size": 4}, 1: {"k": "string"}, 2: {"k": "scalar", "size": 1}, 3: {"k": "union", "type_slot": 2, "members": {1: {"k": "table", "spec": Callable(ChatMsg, "_spec")}, 2: {"k": "table", "spec": Callable(MoveMsg, "_spec")}, 3: {"k": "table", "spec": Callable(SpawnMsg, "_spec")}}}}
 	func seq() -> Variant: return _t.get_u32(0, 0)
+	func sent_by() -> String: return _t.get_string(1)
+	func msg_type() -> Variant: return _t.get_u8(2, 0)
+	func msg() -> FlatBuffer_: return _t.get_table(3)
+	func msg_as_chat_msg() -> ChatMsg: return ChatMsg.wrap_fb(_t.get_table(3)) if msg_type() == 1 else null
+	func msg_as_move_msg() -> MoveMsg: return MoveMsg.wrap_fb(_t.get_table(3)) if msg_type() == 2 else null
+	func msg_as_spawn_msg() -> SpawnMsg: return SpawnMsg.wrap_fb(_t.get_table(3)) if msg_type() == 3 else null
+	## Typed unwrap via the union tag — member wrapper, String, or null.
+	func msg_unwrap() -> Variant:
+		match msg_type():
+			1: return ChatMsg.wrap_fb(_t.get_table(3))
+			2: return MoveMsg.wrap_fb(_t.get_table(3))
+			3: return SpawnMsg.wrap_fb(_t.get_table(3))
+			_: return null
 
-	static func create_packet(__b: FlatBufferBuilder_, msg_off: int = 0, msg_type: int = 0, sent_by_off: int = 0, seq: int = 0) -> int:
+	static func create_packet(__b: FlatBufferBuilder_, seq: int = 0, sent_by_off: int = 0, msg_type: int = 0, msg_off: int = 0) -> int:
 		__b.start_table(4)
-		__b.add_offset_field(3, msg_off, 0)
-		__b.add_u8_field(2, msg_type, 0)
-		__b.add_offset_field(1, sent_by_off, 0)
 		__b.add_u32_field(0, seq, 0)
+		__b.add_offset_field(1, sent_by_off, 0)
+		__b.add_u8_field(2, msg_type, 0)
+		__b.add_offset_field(3, msg_off, 0)
 		return __b.end_table()
+
+	## Object API: unpack to a plain Dictionary (field names
+	## verbatim; tables/structs nest; unions become
+	## {"x_type": "Name", "x": {...}}; ulong fields return the
+	## raw signed bit pattern (hex via <f>_hex()); byte vectors
+	## return PackedByteArray; enums return declared names.
+	func to_dict() -> Dictionary:
+		var __d := {}
+		__d["seq"] = seq()
+		if _t.has_field(1): __d["sent_by"] = sent_by()
+		if _t.has_field(3) or _t.has_field(2):
+			__d["msg_type"] = Demo_DemoMsg.name_of(msg_type())
+			var __w: Variant = msg_unwrap()
+			__d["msg"] = __w.to_dict() if __w is RefCounted else __w
+		return __d
+
+	## flatc --json-shaped Dictionary (ulong as unsigned number,
+	## byte vectors as int arrays). to_json() stringifies it.
+	func _json_dict() -> Dictionary:
+		var __d := {}
+		if _t.has_field(0): __d["seq"] = seq()
+		if _t.has_field(1): __d["sent_by"] = sent_by()
+		if _t.has_field(3) or _t.has_field(2):
+			__d["msg_type"] = Demo_DemoMsg.name_of(msg_type())
+			var __w: Variant = msg_unwrap()
+			__d["msg"] = __w._json_dict() if __w is RefCounted else __w
+		return __d
+
+	func to_json() -> String: return JSON.stringify(_json_dict())
+
+	## Pack a Dictionary back into `__b`, returning the table offset.
+	## Children are built first; absent keys leave fields unset.
+	static func from_dict(__b: FlatBufferBuilder_, __d: Dictionary) -> int:
+		var __v_sent_by := 0
+		if __d.has("sent_by"): __v_sent_by = __b.create_string(str(__d["sent_by"]))
+		var __v_msg := 0
+		var __v_msg_tag := 0
+		if __d.has("msg_type") or __d.has("msg"):
+			var __tagv: Variant = __d.get("msg_type", 0)
+			__v_msg_tag = Demo_DemoMsg.value_of(str(__tagv)) if __tagv is String else int(__tagv)
+			match __v_msg_tag:
+				1: __v_msg = ChatMsg.from_dict(__b, __d.get("msg", {}))
+				2: __v_msg = MoveMsg.from_dict(__b, __d.get("msg", {}))
+				3: __v_msg = SpawnMsg.from_dict(__b, __d.get("msg", {}))
+		__b.start_table(4)
+		__b.add_u32_field(0, __d.get("seq", 0), 0)
+		__b.add_offset_field(1, __v_sent_by, 0)
+		__b.add_u8_field(2, __v_msg_tag, 0)
+		__b.add_offset_field(3, __v_msg, 0)
+		return __b.end_table()
+
+	## Build a finished buffer from flatc --json-compatible text.
+	static func from_json(text: String) -> Packet:
+		var __d: Variant = JSON.parse_string(text)
+		if not (__d is Dictionary): return null
+		var __b := FlatBufferBuilder_.new()
+		__b.finish(from_dict(__b, __d))
+		return get_root_as(__b.to_packed_byte_array())
 
 class SpawnMsg:
 	var _t: FlatBuffer_
@@ -123,24 +290,84 @@ class SpawnMsg:
 	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
 		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
 	static func _spec() -> Dictionary:
-		return {0: {"k": "string"}, 3: {"k": "struct", "size": 12}, 2: {"k": "scalar", "size": 4}, 1: {"k": "scalar", "size": 1}, 4: {"k": "vector", "elem": {"k": "string"}}}
+		return {0: {"k": "string"}, 1: {"k": "scalar", "size": 1}, 2: {"k": "scalar", "size": 4}, 3: {"k": "struct", "size": 12}, 4: {"k": "vector", "elem": {"k": "string"}}}
 	func name() -> String: return _t.get_string(0)
-	func pos() -> Vec3: return Vec3.wrap_fb(_t.get_struct(3)) if _t.has_field(3) else null
-	func score() -> Variant: return _t.get_f32(2, 0.0)
 	func shape() -> Variant: return _t.get_i8(1, 0)
+	func score() -> Variant: return _t.get_f32(2, 0.0)
+	func pos() -> Vec3: return Vec3.wrap_fb(_t.get_struct(3)) if _t.has_field(3) else null
 	func tags_len() -> int: return _t.vector_len(4)
 	func tags(i: int) -> String: return _t.get_vector_string(4, i)
 	static func create_tags_vector(__b: FlatBufferBuilder_, data: Array) -> int: return __b.create_offset_vector(data)
 	static func start_tags_vector(__b: FlatBufferBuilder_, n: int) -> void: __b.start_vector(4, n, 4)
 
-	static func create_spawn_msg(__b: FlatBufferBuilder_, name_off: int = 0, pos: Array = [], score: float = 0.0, shape: int = 0, tags_off: int = 0) -> int:
+	static func create_spawn_msg(__b: FlatBufferBuilder_, name_off: int = 0, shape: int = 0, score: float = 0.0, pos: Array = [], tags_off: int = 0) -> int:
 		__b.start_table(5)
 		__b.add_offset_field(0, name_off, 0)
-		if pos: __b.add_struct_field(3, Vec3.create_vec3.callv([__b] + pos), 0)
-		__b.add_f32_field(2, score, 0.0)
 		__b.add_i8_field(1, shape, 0)
+		__b.add_f32_field(2, score, 0.0)
+		if pos: __b.add_struct_field(3, Vec3.create_vec3.callv([__b] + pos), 0)
 		__b.add_offset_field(4, tags_off, 0)
 		return __b.end_table()
+
+	## Object API: unpack to a plain Dictionary (field names
+	## verbatim; tables/structs nest; unions become
+	## {"x_type": "Name", "x": {...}}; ulong fields return the
+	## raw signed bit pattern (hex via <f>_hex()); byte vectors
+	## return PackedByteArray; enums return declared names.
+	func to_dict() -> Dictionary:
+		var __d := {}
+		if _t.has_field(0): __d["name"] = name()
+		__d["shape"] = Demo_Shape.name_of(shape())
+		__d["score"] = score()
+		if _t.has_field(3): __d["pos"] = pos().to_dict()
+		if _t.has_field(4):
+			var __a := []
+			for i in tags_len(): __a.append(tags(i))
+			__d["tags"] = __a
+		return __d
+
+	## flatc --json-shaped Dictionary (ulong as unsigned number,
+	## byte vectors as int arrays). to_json() stringifies it.
+	func _json_dict() -> Dictionary:
+		var __d := {}
+		if _t.has_field(0): __d["name"] = name()
+		if _t.has_field(1): __d["shape"] = Demo_Shape.name_of(shape())
+		if _t.has_field(2): __d["score"] = score()
+		if _t.has_field(3): __d["pos"] = pos()._json_dict()
+		if _t.has_field(4):
+			var __a := []
+			for i in tags_len(): __a.append(tags(i))
+			__d["tags"] = __a
+		return __d
+
+	func to_json() -> String: return JSON.stringify(_json_dict())
+
+	## Pack a Dictionary back into `__b`, returning the table offset.
+	## Children are built first; absent keys leave fields unset.
+	static func from_dict(__b: FlatBufferBuilder_, __d: Dictionary) -> int:
+		var __v_name := 0
+		if __d.has("name"): __v_name = __b.create_string(str(__d["name"]))
+		var __v_tags := 0
+		if __d.has("tags"):
+			var __offs := []
+			for v in __d["tags"]: __offs.append(__b.create_string(str(v)))
+			__v_tags = __b.create_offset_vector(__offs)
+		__b.start_table(5)
+		__b.add_offset_field(0, __v_name, 0)
+		var __v_shape_v: Variant = __d.get("shape", 0)
+		__b.add_i8_field(1, Demo_Shape.value_of(str(__v_shape_v)) if __v_shape_v is String else int(__v_shape_v), 0)
+		__b.add_f32_field(2, __d.get("score", 0.0), 0.0)
+		if __d.has("pos"): __b.add_struct_field(3, Vec3.create_vec3.callv([__b] + Vec3.from_dict(__d["pos"])), 0)
+		__b.add_offset_field(4, __v_tags, 0)
+		return __b.end_table()
+
+	## Build a finished buffer from flatc --json-compatible text.
+	static func from_json(text: String) -> SpawnMsg:
+		var __d: Variant = JSON.parse_string(text)
+		if not (__d is Dictionary): return null
+		var __b := FlatBufferBuilder_.new()
+		__b.finish(from_dict(__b, __d))
+		return get_root_as(__b.to_packed_byte_array())
 
 class Vec3:
 	const SIZE := 12
@@ -172,3 +399,33 @@ class Vec3:
 		for i in range(data.size() - 1, -1, -1):
 			create_vec3.callv([__b] + data[i])
 		return __b.end_vector()
+
+	## Vector of `Vec3` — `data` is an Array of member args
+	## (each element an Array passed to create_vec3).
+	static func create_vec3_vector64(__b: FlatBufferBuilder_, data: Array) -> int:
+		__b.start_vector64(SIZE, data.size(), ALIGN)
+		for i in range(data.size() - 1, -1, -1):
+			create_vec3.callv([__b] + data[i])
+		return __b.end_vector64()
+
+	## Object API: this struct as a plain Dictionary.
+	func to_dict() -> Dictionary:
+		var __d := {}
+		__d["x"] = x()
+		__d["y"] = y()
+		__d["z"] = z()
+		return __d
+
+	func _json_dict() -> Dictionary:
+		var __d := {}
+		__d["x"] = x()
+		__d["y"] = y()
+		__d["z"] = z()
+		return __d
+	## Build the positional arg list for create_vec3 from a dict.
+	static func from_dict(d: Dictionary) -> Array:
+		return [
+			d.get("x", 0.0),
+			d.get("y", 0.0),
+			d.get("z", 0.0),
+		]
