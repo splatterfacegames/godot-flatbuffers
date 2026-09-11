@@ -27,8 +27,7 @@ jobs:
           curl -L --fail --output flatc.zip \
             https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g++-13.zip
           unzip -o -q flatc.zip -d /tmp/flatc
-          find /tmp/flatc -name flatc -type f | head -1 | xargs -I{} sudo cp {} /usr/local/bin/flatc
-          chmod +x /usr/local/bin/flatc
+          find /tmp/flatc -name flatc -type f | head -1 | xargs -I{} sudo install -m755 {} /usr/local/bin/flatc
           pip install flatbuffers
           (cd tests/node && npm i)
       - name: Build golden vectors + generate accessors

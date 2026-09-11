@@ -21,27 +21,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Godot, flatc, and Web export templates
+      - name: Install Godot and Web export templates
         run: |
           curl -L --fail --output godot.zip \
             https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip
           curl -L --fail --output templates.tpz \
             https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_export_templates.tpz
-          curl -L --fail --output flatc.zip \
-            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g++-13.zip
           unzip -q godot.zip
           chmod +x Godot_v4.7.1-stable_linux.x86_64
           sudo mv Godot_v4.7.1-stable_linux.x86_64 /usr/local/bin/godot
           unzip -q templates.tpz -d /tmp/godot-templates
           mkdir -p "$HOME/.local/share/godot/export_templates"
           mv /tmp/godot-templates/templates "$HOME/.local/share/godot/export_templates/4.7.1.stable"
-          unzip -o -q flatc.zip -d /tmp/flatc || unzip -o -q flatc.zip -d /tmp/flatc 'flatc' || true
-          find /tmp/flatc -name flatc -type f | head -1 | xargs -I{} sudo mv {} /usr/local/bin/flatc
-          chmod +x /usr/local/bin/flatc
-          pip install flatbuffers
       - name: Build product site and Godot Web demo
         run: |
           mkdir -p dist/demo demo/dist/demo
