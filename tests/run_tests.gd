@@ -263,6 +263,12 @@ func _init() -> void:
 	ok(not FBV.verify(PackedByteArray([1, 2])), "tiny buffer rejected")
 	var trunc := bytes.slice(0, 20)
 	ok(not FBV.verify(trunc), "truncated buffer rejected")
+	# a single u8 field lands on the buffer's last byte — must not be rejected
+	var mb := FBB.new()
+	mb.start_table(1)
+	mb.add_u8_field(0, 7, 0)
+	mb.finish(mb.end_table())
+	ok(FBV.verify(mb.to_packed_byte_array()), "verify accepts buffer ending in a u8 field")
 	var cor := PackedByteArray(bytes)
 	var npos := cor.decode_u32(0)
 	var nvt := npos - cor.decode_s32(npos)

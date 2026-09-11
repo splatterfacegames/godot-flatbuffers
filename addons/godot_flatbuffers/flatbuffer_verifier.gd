@@ -63,14 +63,12 @@ static func _check_table(buf: PackedByteArray, pos: int, depth: int) -> bool:
 	if pos + obj_len > buf.size():
 		return false
 	# every field's stored location must fit inside the table object
+	# (fields never overlap the leading soffset, so rel >= 4)
 	for i in range(4, vt_len, 2):
 		var rel := buf.decode_u16(vt + i)
 		if rel == 0:
 			continue
 		if rel < 4 or rel >= obj_len:
-			return false
-		var field_pos := pos + rel
-		if field_pos + 4 > buf.size():
 			return false
 	return true
 
@@ -125,15 +123,15 @@ static func _verify_table(buf: PackedByteArray, pos: int, spec: Dictionary, dept
 			continue
 		var idx := 4 + int(slot) * 2
 		var has_payload := idx + 2 <= vt_len and buf.decode_u16(vt + idx) != 0
-		if (_union_tag(buf, pos, vt, vt_len, d) == 0) == has_payload:
+		if (_union_tag(buf, pos, vt, vt_len, obj_len, d) == 0) == has_payload:
 			return false
 	return true
 
-static func _union_tag(buf: PackedByteArray, pos: int, vt: int, vt_len: int, d: Dictionary) -> int:
+static func _union_tag(buf: PackedByteArray, pos: int, vt: int, vt_len: int, obj_len: int, d: Dictionary) -> int:
 	var tidx := 4 + int(d.get("type_slot", -1)) * 2
 	if tidx >= 4 and tidx + 2 <= vt_len:
 		var trel := buf.decode_u16(vt + tidx)
-		if trel != 0:
+		if trel != 0 and trel < obj_len:
 			return buf.decode_u8(pos + trel)
 	return 0
 
@@ -208,7 +206,7 @@ static func _verify_vector(buf: PackedByteArray, t: int, elem: Variant, depth: i
 	return false
 
 static func _verify_union(buf: PackedByteArray, pos: int, vt: int, fpos: int, d: Dictionary, depth: int) -> bool:
-	var tag := _union_tag(buf, pos, vt, buf.decode_u16(vt), d)
+	var tag := _union_tag(buf, pos, vt, buf.decode_u16(vt), buf.decode_u16(vt + 2), d)
 	if tag == 0:
 		return false  # payload present with NONE tag
 	var m: Variant = d.get("members", {}).get(tag)
