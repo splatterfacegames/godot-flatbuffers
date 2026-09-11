@@ -15,10 +15,13 @@ table MoveMsg {
   combo_chain:[ubyte];
 }
 
+struct Vec3 { x:float; y:float; z:float; }
+
 table SpawnMsg {
   name:string;
   shape:Shape;
   score:float;
+  pos:Vec3;
   tags:[string];
 }
 

@@ -123,19 +123,52 @@ class SpawnMsg:
 	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
 		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
 	static func _spec() -> Dictionary:
-		return {0: {"k": "string"}, 2: {"k": "scalar", "size": 4}, 1: {"k": "scalar", "size": 1}, 3: {"k": "vector", "elem": {"k": "string"}}}
+		return {0: {"k": "string"}, 3: {"k": "struct", "size": 12}, 2: {"k": "scalar", "size": 4}, 1: {"k": "scalar", "size": 1}, 4: {"k": "vector", "elem": {"k": "string"}}}
 	func name() -> String: return _t.get_string(0)
+	func pos() -> Vec3: return Vec3.wrap_fb(_t.get_struct(3)) if _t.has_field(3) else null
 	func score() -> Variant: return _t.get_f32(2, 0.0)
 	func shape() -> Variant: return _t.get_i8(1, 0)
-	func tags_len() -> int: return _t.vector_len(3)
-	func tags(i: int) -> String: return _t.get_vector_string(3, i)
+	func tags_len() -> int: return _t.vector_len(4)
+	func tags(i: int) -> String: return _t.get_vector_string(4, i)
 	static func create_tags_vector(__b: FlatBufferBuilder_, data: Array) -> int: return __b.create_offset_vector(data)
 	static func start_tags_vector(__b: FlatBufferBuilder_, n: int) -> void: __b.start_vector(4, n, 4)
 
-	static func create_spawn_msg(__b: FlatBufferBuilder_, name_off: int = 0, score: float = 0.0, shape: int = 0, tags_off: int = 0) -> int:
-		__b.start_table(4)
+	static func create_spawn_msg(__b: FlatBufferBuilder_, name_off: int = 0, pos: Array = [], score: float = 0.0, shape: int = 0, tags_off: int = 0) -> int:
+		__b.start_table(5)
 		__b.add_offset_field(0, name_off, 0)
+		if pos: __b.add_struct_field(3, Vec3.create_vec3.callv([__b] + pos), 0)
 		__b.add_f32_field(2, score, 0.0)
 		__b.add_i8_field(1, shape, 0)
-		__b.add_offset_field(3, tags_off, 0)
+		__b.add_offset_field(4, tags_off, 0)
 		return __b.end_table()
+
+class Vec3:
+	const SIZE := 12
+	const ALIGN := 4
+	var _s: FlatBufferStruct_
+	static func wrap_fb(s: FlatBufferStruct_) -> Vec3:
+		if s == null: return null
+		var x := Vec3.new()
+		x._s = s
+		return x
+	func is_valid() -> bool: return _s != null and _s.is_valid()
+	func x() -> Variant: return _s.get_f32(0)
+	func y() -> Variant: return _s.get_f32(4)
+	func z() -> Variant: return _s.get_f32(8)
+
+	## Write the struct inline at the builder head (tables: pass the
+	## result straight to add_struct_field; vectors: create_vec3_vector).
+	static func create_vec3(__b: FlatBufferBuilder_, x: float = 0, y: float = 0, z: float = 0) -> int:
+		__b.prep(4, 12)
+		__b.write_f32(z)
+		__b.write_f32(y)
+		__b.write_f32(x)
+		return __b.offset()
+
+	## Vector of `Vec3` — `data` is an Array of member args
+	## (each element an Array passed to create_vec3).
+	static func create_vec3_vector(__b: FlatBufferBuilder_, data: Array) -> int:
+		__b.start_vector(SIZE, data.size(), ALIGN)
+		for i in range(data.size() - 1, -1, -1):
+			create_vec3.callv([__b] + data[i])
+		return __b.end_vector()

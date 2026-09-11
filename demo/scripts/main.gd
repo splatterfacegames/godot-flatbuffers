@@ -130,6 +130,7 @@ func _on_type_changed(idx: int) -> void:
 		2: # SpawnMsg
 			field_edits.name = _row(fields_box, "name", "spriggan")
 			field_edits.score = _row(fields_box, "score", "9.5")
+			field_edits.pos = _row(fields_box, "pos xyz", "1.0,2.5,-3")
 			field_edits.tags = _row(fields_box, "tags (csv)", "primal,shiny")
 			var sh := OptionButton.new()
 			for s in ["Circle", "Square", "Triangle"]: sh.add_item(s)
@@ -165,8 +166,12 @@ func _build_packet() -> PackedByteArray:
 			for t in field_edits.tags.text.split(","):
 				if t.strip_edges() != "": tag_offs.append(b.create_string(t.strip_edges()))
 			var toff := b.create_offset_vector(tag_offs)
+			var pos: Array = []
+			for p in field_edits.pos.text.split(","):
+				if p.strip_edges() != "": pos.append(float(p))
+			while pos.size() < 3: pos.append(0.0)
 			moff = GEN.SpawnMsg.create_spawn_msg(b,
-				b.create_string(field_edits.name.text),
+				b.create_string(field_edits.name.text), pos,
 				float(field_edits.score.text),
 				field_edits.shape.selected, toff)
 	# create_packet(b, msg_off, msg_type, sent_by_off, seq)
@@ -227,5 +232,7 @@ func _decode_packet(buf: PackedByteArray) -> String:
 			var m = GEN.SpawnMsg.wrap_fb(p.msg())
 			var tags := []
 			for i in m.tags_len(): tags.append(m.tags(i))
-			lines.append("  SpawnMsg name='%s' shape=%d score=%.2f tags=%s" % [m.name(), m.shape(), m.score(), tags])
+			var pos = m.pos()
+			var pos_s := "null" if pos == null else "(%.2f, %.2f, %.2f)" % [pos.x(), pos.y(), pos.z()]
+			lines.append("  SpawnMsg name='%s' shape=%d score=%.2f pos=%s tags=%s" % [m.name(), m.shape(), m.score(), pos_s, tags])
 	return "\n".join(lines)
