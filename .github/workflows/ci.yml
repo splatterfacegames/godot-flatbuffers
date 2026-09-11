@@ -36,7 +36,7 @@ jobs:
           flatc --schema -b -o tests tests/schema.fbs
           flatc --python -o /tmp/reflectgen tests/reflection.fbs
           export REFLECT_GEN=/tmp/reflectgen
-          python tools/generate_gd.py tests/schema.bfbs tests/gen_test.gd
+          python tools/generate_gd.py tests/schema.bfbs tests/gen_schema.gd
           python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name TT
       - name: Run GDScript test suite
         run: |

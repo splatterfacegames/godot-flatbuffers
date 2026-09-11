@@ -3,6 +3,8 @@ class_name Demo
 
 const FlatBuffer_ = preload("res://addons/godot_flatbuffers/flatbuffer.gd")
 const FlatBufferBuilder_ = preload("res://addons/godot_flatbuffers/flatbuffer_builder.gd")
+const FlatBufferStruct_ = preload("res://addons/godot_flatbuffers/flatbuffer_struct.gd")
+const FlatBufferVerifier_ = preload("res://addons/godot_flatbuffers/flatbuffer_verifier.gd")
 
 class Demo_DemoMsg:
 	const NONE = 0
@@ -19,86 +21,121 @@ class ChatMsg:
 	var _t: FlatBuffer_
 	static func get_root_as(buf: PackedByteArray) -> ChatMsg:
 		return wrap_fb(FlatBuffer_.root(buf))
+	static func get_size_prefixed_root_as(buf: PackedByteArray) -> ChatMsg:
+		return wrap_fb(FlatBuffer_.root_size_prefixed(buf))
 	static func wrap_fb(fb: FlatBuffer_) -> ChatMsg:
 		if fb == null: return null
 		var x := ChatMsg.new()
 		x._t = fb
 		return x
+	## Schema-aware verification (FlatBufferVerifier_ fallback: FBV.verify).
+	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
+		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
+	static func _spec() -> Dictionary:
+		return {0: {"k": "string"}, 2: {"k": "scalar", "size": 8}, 1: {"k": "string"}}
 	func author() -> String: return _t.get_string(0)
 	func sent_at() -> Variant: return _t.get_u64(2, 0)
+	func sent_at_hex() -> String: return _t.get_u64_hex(2, "0x0")
 	func text() -> String: return _t.get_string(1)
 
-	static func create_chat_msg(b: FlatBufferBuilder_, author_off: int = 0, sent_at: int = 0, text_off: int = 0) -> int:
-		b.start_table(3)
-		b.add_offset_field(0, author_off, 0)
-		b.add_u64_field(2, sent_at, 0)
-		b.add_offset_field(1, text_off, 0)
-		return b.end_table()
+	static func create_chat_msg(__b: FlatBufferBuilder_, author_off: int = 0, sent_at: int = 0, text_off: int = 0) -> int:
+		__b.start_table(3)
+		__b.add_offset_field(0, author_off, 0)
+		__b.add_u64_field(2, sent_at, 0)
+		__b.add_offset_field(1, text_off, 0)
+		return __b.end_table()
 
 class MoveMsg:
 	var _t: FlatBuffer_
 	static func get_root_as(buf: PackedByteArray) -> MoveMsg:
 		return wrap_fb(FlatBuffer_.root(buf))
+	static func get_size_prefixed_root_as(buf: PackedByteArray) -> MoveMsg:
+		return wrap_fb(FlatBuffer_.root_size_prefixed(buf))
 	static func wrap_fb(fb: FlatBuffer_) -> MoveMsg:
 		if fb == null: return null
 		var x := MoveMsg.new()
 		x._t = fb
 		return x
+	## Schema-aware verification (FlatBufferVerifier_ fallback: FBV.verify).
+	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
+		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
+	static func _spec() -> Dictionary:
+		return {2: {"k": "scalar", "size": 4}, 3: {"k": "vector", "elem": {"k": "scalar", "size": 1}}, 0: {"k": "scalar", "size": 1}, 1: {"k": "scalar", "size": 1}}
 	func card_id() -> Variant: return _t.get_u32(2, 0)
 	func combo_chain_len() -> int: return _t.vector_len(3)
 	func combo_chain(i: int) -> Variant: return _t.get_vector_u8(3, i)
+	func combo_chain_bytes() -> PackedByteArray: return _t.get_vector_bytes(3)
 	func from_cell() -> Variant: return _t.get_u8(0, 0)
 	func to_cell() -> Variant: return _t.get_u8(1, 0)
+	static func create_combo_chain_vector(__b: FlatBufferBuilder_, data: Variant) -> int:
+		return __b.create_byte_vector(data) if data is PackedByteArray else __b.create_u8_vector(data)
+	static func start_combo_chain_vector(__b: FlatBufferBuilder_, n: int) -> void: __b.start_vector(1, n, 1)
 
-	static func create_move_msg(b: FlatBufferBuilder_, card_id: int = 0, combo_chain_off: int = 0, from_cell: int = 0, to_cell: int = 0) -> int:
-		b.start_table(4)
-		b.add_u32_field(2, card_id, 0)
-		b.add_offset_field(3, combo_chain_off, 0)
-		b.add_u8_field(0, from_cell, 0)
-		b.add_u8_field(1, to_cell, 0)
-		return b.end_table()
+	static func create_move_msg(__b: FlatBufferBuilder_, card_id: int = 0, combo_chain_off: int = 0, from_cell: int = 0, to_cell: int = 0) -> int:
+		__b.start_table(4)
+		__b.add_u32_field(2, card_id, 0)
+		__b.add_offset_field(3, combo_chain_off, 0)
+		__b.add_u8_field(0, from_cell, 0)
+		__b.add_u8_field(1, to_cell, 0)
+		return __b.end_table()
 
 class Packet:
 	var _t: FlatBuffer_
 	static func get_root_as(buf: PackedByteArray) -> Packet:
 		return wrap_fb(FlatBuffer_.root(buf))
+	static func get_size_prefixed_root_as(buf: PackedByteArray) -> Packet:
+		return wrap_fb(FlatBuffer_.root_size_prefixed(buf))
 	static func wrap_fb(fb: FlatBuffer_) -> Packet:
 		if fb == null: return null
 		var x := Packet.new()
 		x._t = fb
 		return x
+	## Schema-aware verification (FlatBufferVerifier_ fallback: FBV.verify).
+	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
+		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
+	static func _spec() -> Dictionary:
+		return {3: {"k": "union", "type_slot": 2, "members": {1: {"k": "table", "spec": Callable(ChatMsg, "_spec")}, 2: {"k": "table", "spec": Callable(MoveMsg, "_spec")}, 3: {"k": "table", "spec": Callable(SpawnMsg, "_spec")}}}, 2: {"k": "scalar", "size": 1}, 1: {"k": "string"}, 0: {"k": "scalar", "size": 4}}
 	func msg() -> FlatBuffer_: return _t.get_table(3)
 	func msg_type() -> Variant: return _t.get_u8(2, 0)
 	func sent_by() -> String: return _t.get_string(1)
 	func seq() -> Variant: return _t.get_u32(0, 0)
 
-	static func create_packet(b: FlatBufferBuilder_, msg_off: int = 0, msg_type: int = 0, sent_by_off: int = 0, seq: int = 0) -> int:
-		b.start_table(4)
-		b.add_offset_field(3, msg_off, 0)
-		b.add_u8_field(2, msg_type, 0)
-		b.add_offset_field(1, sent_by_off, 0)
-		b.add_u32_field(0, seq, 0)
-		return b.end_table()
+	static func create_packet(__b: FlatBufferBuilder_, msg_off: int = 0, msg_type: int = 0, sent_by_off: int = 0, seq: int = 0) -> int:
+		__b.start_table(4)
+		__b.add_offset_field(3, msg_off, 0)
+		__b.add_u8_field(2, msg_type, 0)
+		__b.add_offset_field(1, sent_by_off, 0)
+		__b.add_u32_field(0, seq, 0)
+		return __b.end_table()
 
 class SpawnMsg:
 	var _t: FlatBuffer_
 	static func get_root_as(buf: PackedByteArray) -> SpawnMsg:
 		return wrap_fb(FlatBuffer_.root(buf))
+	static func get_size_prefixed_root_as(buf: PackedByteArray) -> SpawnMsg:
+		return wrap_fb(FlatBuffer_.root_size_prefixed(buf))
 	static func wrap_fb(fb: FlatBuffer_) -> SpawnMsg:
 		if fb == null: return null
 		var x := SpawnMsg.new()
 		x._t = fb
 		return x
+	## Schema-aware verification (FlatBufferVerifier_ fallback: FBV.verify).
+	static func verify(buf: PackedByteArray, size_prefixed := false) -> bool:
+		return FlatBufferVerifier_.verify_root(buf, _spec(), size_prefixed)
+	static func _spec() -> Dictionary:
+		return {0: {"k": "string"}, 2: {"k": "scalar", "size": 4}, 1: {"k": "scalar", "size": 1}, 3: {"k": "vector", "elem": {"k": "string"}}}
 	func name() -> String: return _t.get_string(0)
 	func score() -> Variant: return _t.get_f32(2, 0.0)
 	func shape() -> Variant: return _t.get_i8(1, 0)
 	func tags_len() -> int: return _t.vector_len(3)
 	func tags(i: int) -> String: return _t.get_vector_string(3, i)
+	static func create_tags_vector(__b: FlatBufferBuilder_, data: Array) -> int: return __b.create_offset_vector(data)
+	static func start_tags_vector(__b: FlatBufferBuilder_, n: int) -> void: __b.start_vector(4, n, 4)
 
-	static func create_spawn_msg(b: FlatBufferBuilder_, name_off: int = 0, score: float = 0.0, shape: int = 0, tags_off: int = 0) -> int:
-		b.start_table(4)
-		b.add_offset_field(0, name_off, 0)
-		b.add_f32_field(2, score, 0.0)
-		b.add_i8_field(1, shape, 0)
-		b.add_offset_field(3, tags_off, 0)
-		return b.end_table()
+	static func create_spawn_msg(__b: FlatBufferBuilder_, name_off: int = 0, score: float = 0.0, shape: int = 0, tags_off: int = 0) -> int:
+		__b.start_table(4)
+		__b.add_offset_field(0, name_off, 0)
+		__b.add_f32_field(2, score, 0.0)
+		__b.add_i8_field(1, shape, 0)
+		__b.add_offset_field(3, tags_off, 0)
+		return __b.end_table()
