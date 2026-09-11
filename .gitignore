@@ -4,6 +4,9 @@ tests/node/package*.json
 tests/gen_ts/
 tests/gen_py/
 tests/gen_tt.gd
+tests/gen_schema.gd
+tests/gen_tt.gd.uid
+tests/gen_schema.gd.uid
 
 # demo build output
 demo/dist/

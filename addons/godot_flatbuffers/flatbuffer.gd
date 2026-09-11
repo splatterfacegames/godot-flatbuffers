@@ -6,6 +6,8 @@ extends RefCounted
 ## FlatBuffer.at(bytes, table_offset) for a nested table.
 ## All field access is by vtable slot index (schema field order).
 
+const _FBStruct := preload("res://addons/godot_flatbuffers/flatbuffer_struct.gd")
+
 var _buf: PackedByteArray
 var _pos: int  # absolute position of this table's soffset
 
@@ -18,6 +20,23 @@ static func root(buf: PackedByteArray) -> FlatBuffer:
 	fb._pos = buf.decode_u32(0)
 	return fb
 
+## Root table of a `--size-prefixed` buffer (u32 length prefix at byte 0).
+static func root_size_prefixed(buf: PackedByteArray) -> FlatBuffer:
+	var fb := FlatBuffer.new()
+	fb._buf = buf
+	if buf.size() < 8:
+		fb._pos = -1
+		return fb
+	fb._pos = 4 + buf.decode_u32(4)
+	return fb
+
+## True when buf carries the given 4-byte file_identifier
+## (set via flatc's `file_identifier` / FlatBufferBuilder.finish).
+static func buffer_has_identifier(buf: PackedByteArray, file_identifier: String, size_prefixed := false) -> bool:
+	var off := 4 if size_prefixed else 0
+	var id := file_identifier.to_utf8_buffer()
+	return id.size() == 4 and buf.size() >= off + 8 and buf.slice(off + 4, off + 8) == id
+
 static func at(buf: PackedByteArray, pos: int) -> FlatBuffer:
 	var fb := FlatBuffer.new()
 	fb._buf = buf
@@ -29,12 +48,19 @@ func is_valid() -> bool:
 
 # Absolute position of field's stored value, or -1 if absent (use default).
 func field_pos(slot: int) -> int:
+	if _pos < 4 or _pos + 4 > _buf.size():
+		return -1
 	var vt := _pos - _buf.decode_s32(_pos)
 	var idx := 4 + slot * 2
 	if vt < 0 or idx + 2 > _buf.decode_u16(vt):
 		return -1
 	var rel := _buf.decode_u16(vt + idx)
 	return _pos + rel if rel != 0 else -1
+
+## True when a field is explicitly present in the buffer (not the schema
+## default). Needed for `force_defaults` output and `optional` scalars.
+func has_field(slot: int) -> bool:
+	return field_pos(slot) >= 0
 
 # Offset of the (v)table/string/vector a uoffset field points at, or -1.
 func _indirect(slot: int) -> int:
@@ -81,6 +107,19 @@ func get_u64(slot: int, d := 0) -> int:
 	var p := field_pos(slot)
 	return d if p < 0 else _buf.decode_u64(p)
 
+## Full-range u64 accessor: returns "0x%016x". Use for values that may
+## exceed i64::MAX — get_u64() returns their bit pattern as a negative int.
+func get_u64_hex(slot: int, d := "") -> String:
+	var p := field_pos(slot)
+	if p < 0:
+		return d
+	return "0x%08x%08x" % [_buf.decode_u32(p + 4), _buf.decode_u32(p)]
+
+## Full-range u64 accessor: the raw 8 little-endian bytes.
+func get_u64_bytes(slot: int, d := PackedByteArray()) -> PackedByteArray:
+	var p := field_pos(slot)
+	return d if p < 0 else _buf.slice(p, p + 8)
+
 func get_f32(slot: int, d := 0.0) -> float:
 	var p := field_pos(slot)
 	return d if p < 0 else _buf.decode_float(p)
@@ -102,6 +141,23 @@ func get_table(slot: int) -> FlatBuffer:
 	var p := _indirect(slot)
 	return null if p < 0 else FlatBuffer.at(_buf, p)
 
+## Inline struct field (no vtable, data stored at the field position).
+## Returns null when the field is absent.
+func get_struct(slot: int) -> _FBStruct:
+	var p := field_pos(slot)
+	return null if p < 0 else _FBStruct.wrap(_buf, p)
+
+## Root table of a nested flatbuffer embedded in a `[ubyte]` field
+## (the `nested_flatbuffer` attribute pattern). Null when absent.
+func get_nested_root(slot: int) -> FlatBuffer:
+	var p := _indirect(slot)
+	if p < 0:
+		return null
+	var base := p + 4  # skip the vector's length prefix; nested buffer starts there
+	if base + 4 > _buf.size():
+		return null
+	return FlatBuffer.at(_buf, base + _buf.decode_u32(base))
+
 # ── vectors ──────────────────────────────────────────────────
 
 func vector_len(slot: int) -> int:
@@ -122,6 +178,18 @@ func get_vector_u8(slot: int, i: int) -> int:
 	var p := _vec_elem(slot, i, 1)
 	return 0 if p < 0 else _buf.decode_u8(p)
 
+func get_vector_i8(slot: int, i: int) -> int:
+	var p := _vec_elem(slot, i, 1)
+	return 0 if p < 0 else _buf.decode_s8(p)
+
+func get_vector_i16(slot: int, i: int) -> int:
+	var p := _vec_elem(slot, i, 2)
+	return 0 if p < 0 else _buf.decode_s16(p)
+
+func get_vector_u16(slot: int, i: int) -> int:
+	var p := _vec_elem(slot, i, 2)
+	return 0 if p < 0 else _buf.decode_u16(p)
+
 func get_vector_i32(slot: int, i: int) -> int:
 	var p := _vec_elem(slot, i, 4)
 	return 0 if p < 0 else _buf.decode_s32(p)
@@ -137,6 +205,13 @@ func get_vector_i64(slot: int, i: int) -> int:
 func get_vector_u64(slot: int, i: int) -> int:
 	var p := _vec_elem(slot, i, 8)
 	return 0 if p < 0 else _buf.decode_u64(p)
+
+## Full-range u64 element accessor, same rationale as get_u64_hex.
+func get_vector_u64_hex(slot: int, i: int, d := "") -> String:
+	var p := _vec_elem(slot, i, 8)
+	if p < 0:
+		return d
+	return "0x%08x%08x" % [_buf.decode_u32(p + 4), _buf.decode_u32(p)]
 
 func get_vector_f32(slot: int, i: int) -> float:
 	var p := _vec_elem(slot, i, 4)
@@ -162,3 +237,16 @@ func get_vector_table(slot: int, i: int) -> FlatBuffer:
 	if p < 0:
 		return null
 	return FlatBuffer.at(_buf, p + _buf.decode_u32(p))
+
+## Element i of a `[struct]` vector (fixed-size elements stored inline).
+func get_vector_struct(slot: int, i: int, struct_size: int) -> _FBStruct:
+	var p := _vec_elem(slot, i, struct_size)
+	return null if p < 0 else _FBStruct.wrap(_buf, p)
+
+## Whole `[ubyte]`/`[byte]` vector as a PackedByteArray (byte-vector helper).
+func get_vector_bytes(slot: int) -> PackedByteArray:
+	var p := _indirect(slot)
+	if p < 0:
+		return PackedByteArray()
+	var n := _buf.decode_u32(p)
+	return _buf.slice(p + 4, p + 4 + n)
