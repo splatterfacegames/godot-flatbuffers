@@ -12,3 +12,5 @@ tests/gen_schema.gd.uid
 demo/dist/
 demo/.godot/
 demo/*.uid
+tests/gen_v64.gd
+tests/gen_v64.gd.uid
