@@ -104,6 +104,7 @@ def main() -> int:
         lines.append("\tstatic func get_root_as(buf: PackedByteArray) -> %s:" % cname)
         lines.append("\t\treturn wrap_fb(FlatBuffer_.root(buf))")
         lines.append("\tstatic func wrap_fb(fb: FlatBuffer_) -> %s:" % cname)
+        lines.append("\t\tif fb == null: return null")
         lines.append("\t\tvar x := %s.new()" % cname)
         lines.append("\t\tx._t = fb")
         lines.append("\t\treturn x")
