@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="godot-flatbuffers is a pure-GDScript FlatBuffers runtime for Godot 4 — reader, builder, verifier, and .bfbs-to-GDScript codegen. No GDExtension, works in every export including Web." />
+    <meta name="theme-color" content="#080b10" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="godot-flatbuffers — FlatBuffers in pure GDScript" />
+    <meta property="og:description" content="Binary FlatBuffers serialization for Godot 4 without native plugins — verified byte-for-byte against the official implementation." />
+    <meta property="og:url" content="https://godot-flatbuffers.splatterfacegames.com" />
+    <link rel="canonical" href="https://godot-flatbuffers.splatterfacegames.com" />
+    <link rel="icon" href="/mark.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>godot-flatbuffers — FlatBuffers in pure GDScript</title>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="site-header">
+      <a class="brand" href="#top" aria-label="godot-flatbuffers home">
+        <img src="/mark.svg" width="34" height="34" alt="" />
+        <span>godot-flatbuffers</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="#features">Features</a>
+        <a href="#pipeline">Pipeline</a>
+        <a href="#demo">Demo</a>
+        <a class="nav-github" href="https://github.com/splatterfacegames/godot-flatbuffers">GitHub</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero" id="top">
+        <div class="hero-glow hero-glow-a"></div>
+        <div class="hero-glow hero-glow-b"></div>
+        <div class="hero-grid"></div>
+        <div class="hero-copy">
+          <p class="eyebrow"><span></span> Binary serialization for Godot 4</p>
+          <h1>FlatBuffers.<br /><em>No native code.</em></h1>
+          <p class="hero-lede">
+            Read, build, and verify FlatBuffers in pure GDScript — with typed
+            accessors generated from your .fbs schema. Byte-identical output to
+            the official implementation, running on every platform Godot
+            exports to, including Web.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#demo">Run the live demo</a>
+            <a class="button button-secondary" href="https://github.com/splatterfacegames/godot-flatbuffers">View source <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="hero-meta" aria-label="Project details">
+            <span>Godot 4.x</span>
+            <span>Pure GDScript</span>
+            <span>MIT licensed</span>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="viewport">
+            <div class="viewport-bar">
+              <div class="window-dots"><i></i><i></i><i></i></div>
+              <span>PACKET BUILDER / ENVELOPE</span>
+              <b>LIVE</b>
+            </div>
+            <div class="scene">
+              <div class="scene-sky"></div>
+              <div class="scene-sun"></div>
+              <div class="mountain mountain-back"></div>
+              <div class="mountain mountain-front"></div>
+              <div class="scene-ground"></div>
+              <div class="subject"><span></span></div>
+              <div class="safe-frame"></div>
+              <div class="crosshair crosshair-a"></div>
+              <div class="crosshair crosshair-b"></div>
+              <div class="focus-pill">DECODE / PACKET</div>
+              <div class="shot-card shot-card-a"><small>BUFFER</small><strong>Envelope</strong><span>112 bytes</span></div>
+              <div class="shot-card shot-card-b"><small>UNION</small><strong>MoveIntent</strong><span>cell 4 → slot 0</span></div>
+            </div>
+            <div class="timeline">
+              <span>vtable</span>
+              <div class="timeline-track"><i></i></div>
+              <span>data</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="proof" aria-label="Core capabilities">
+        <div><strong>3</strong><span>runtime components</span></div>
+        <div><strong>0</strong><span>native dependencies</span></div>
+        <div><strong>1:1</strong><span>byte parity with official flatc</span></div>
+        <div><strong>∞</strong><span>export targets</span></div>
+      </section>
+
+      <section class="intro section">
+        <div class="section-kicker">Serialization without the toolchain</div>
+        <div class="intro-grid">
+          <h2>Schema in.<br />Typed GDScript out.</h2>
+          <div>
+            <p class="large-copy">
+              FlatBuffers is the right wire format for games — zero-copy reads,
+              no parsing pass, tiny payloads — but GDScript was never a supported
+              target. This module closes that gap without a GDExtension to
+              compile per platform.
+            </p>
+            <p>
+              Point the generator at a compiled .bfbs schema and it emits typed
+              table accessors and builders. The runtime underneath is a faithful
+              port of the official builder: same layout, same bytes.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="features section" id="features">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">The whole wire format</p>
+            <h2>Small surface.<br />Real FlatBuffers.</h2>
+          </div>
+          <p>Everything your packets need — tables, unions, vectors, strings, defaults — verified against official output.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature feature-wide feature-cyan">
+            <span class="feature-number">01</span>
+            <div class="feature-icon icon-layers"><i></i><i></i><i></i></div>
+            <h3>Read, build, verify</h3>
+            <p>Three small classes cover the lifecycle: FlatBuffer for zero-allocation reads, FlatBufferBuilder for wire-identical writes, FlatBufferVerifier for bounds-checked untrusted input.</p>
+            <ul><li>Vtable + scalar reads</li><li>Back-to-front builder</li><li>Structural verifier</li></ul>
+          </article>
+          <article class="feature feature-amber">
+            <span class="feature-number">02</span>
+            <div class="feature-icon icon-orbit"><i></i></div>
+            <h3>Generated accessors</h3>
+            <p>A Python tool walks the binary reflection schema (.bfbs) and emits typed GDScript wrappers — no flatc fork required.</p>
+          </article>
+          <article class="feature feature-violet">
+            <span class="feature-number">03</span>
+            <div class="feature-icon icon-blend"><i></i><i></i></div>
+            <h3>Unions and envelopes</h3>
+            <p>First-class support for union member tables and envelope patterns — the shapes real network protocols actually use.</p>
+          </article>
+          <article class="feature feature-green">
+            <span class="feature-number">04</span>
+            <div class="feature-icon icon-frame"><i></i><i></i></div>
+            <h3>Runs everywhere Godot does</h3>
+            <p>Pure GDScript means desktop, mobile, consoles, and Web exports all work — no per-platform native builds, no export drama.</p>
+          </article>
+          <article class="feature feature-wide feature-red">
+            <span class="feature-number">05</span>
+            <div class="feature-icon icon-pulse"><i></i><i></i><i></i></div>
+            <h3>Proven byte-for-byte</h3>
+            <p>The test suite builds golden vectors with the official JavaScript implementation and compares GDScript output byte-for-byte — scalars, strings, vectors, nested tables, defaults, and corrupt-buffer handling.</p>
+            <ul><li>Golden vector tests</li><li>Corrupt input rejection</li><li>Headless CI suite</li></ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="pipeline section" id="pipeline">
+        <div class="pipeline-copy">
+          <p class="section-kicker">Predictable by design</p>
+          <h2>A pipeline you can reason about.</h2>
+          <p>
+            Write your schema once, compile it with stock flatc to a binary
+            reflection schema, and generate typed GDScript. At runtime the same
+            three classes read and write the wire bytes directly — nothing
+            hidden, nothing native.
+          </p>
+          <a href="https://github.com/splatterfacegames/godot-flatbuffers/tree/main/addons/godot_flatbuffers" class="text-link">Explore the source <span>↗</span></a>
+        </div>
+        <ol class="pipeline-stages">
+          <li><span>01</span><div><strong>Schema</strong><p>Author your .fbs messages.</p></div><b>flatc · unions · tables</b></li>
+          <li><span>02</span><div><strong>Reflect</strong><p>flatc emits the binary schema.</p></div><b>-b --schema · .bfbs</b></li>
+          <li><span>03</span><div><strong>Generate</strong><p>Typed .gd accessors + builders.</p></div><b>generate_gd.py</b></li>
+          <li><span>04</span><div><strong>Ship</strong><p>Read/write on the wire in-game.</p></div><b>FlatBuffer · Builder · Verifier</b></li>
+        </ol>
+      </section>
+
+      <section class="demo-section" id="demo" aria-labelledby="demo-title">
+        <div class="demo-copy section">
+          <div>
+            <p class="section-kicker">Runs in your browser</p>
+            <h2 id="demo-title">Build a packet. Watch the bytes.</h2>
+          </div>
+          <p>
+            The live demo is the module itself compiled to WebGL: pick a message
+            type, fill in fields, and build a real FlatBuffer. Inspect the hex,
+            verify the buffer, decode it back through the generated accessors,
+            and benchmark throughput — all in GDScript.
+          </p>
+        </div>
+        <div class="demo-shell">
+          <div class="demo-toolbar">
+            <div><i></i><i></i><i></i><span>godot-flatbuffers.splatterfacegames.com/demo</span></div>
+            <a href="/demo/" target="_blank" rel="noopener">Open full screen <span aria-hidden="true">↗</span></a>
+          </div>
+          <div class="demo-stage" data-demo-stage>
+            <div class="demo-poster">
+              <img src="/mark.svg" width="76" height="76" alt="" />
+              <p>Interactive Godot demo</p>
+              <h3>Ready when you are.</h3>
+              <button class="button button-primary" type="button" data-load-demo>Load demo</button>
+              <small>The WebGL build is downloaded only after you start it.</small>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="opensource section">
+        <div class="opensource-card">
+          <p class="section-kicker">Open by default</p>
+          <h2>MIT licensed.<br />Built in the open.</h2>
+          <p>
+            Use it in personal, commercial, and open-source Godot projects.
+            Read the implementation, adapt the generator, and contribute
+            improvements upstream.
+          </p>
+          <div class="opensource-actions">
+            <a class="button button-light" href="https://github.com/splatterfacegames/godot-flatbuffers">Get it on GitHub</a>
+            <a class="text-link text-link-light" href="https://github.com/splatterfacegames/godot-flatbuffers/blob/main/LICENSE">Read the license <span>↗</span></a>
+          </div>
+        </div>
+        <aside class="provenance">
+          <span>Provenance</span>
+          <p>
+            A from-scratch GDScript implementation of the FlatBuffers wire
+            format, authored by Devin. Built to serve a real multiplayer game —
+            not a toy port.
+          </p>
+          <small>Not affiliated with or endorsed by Google.</small>
+        </aside>
+      </section>
+    </main>
+
+    <footer>
+      <a class="brand" href="#top"><img src="/mark.svg" width="28" height="28" alt="" /><span>godot-flatbuffers</span></a>
+      <p>FlatBuffers in pure GDScript for Godot 4.</p>
+      <div><a href="https://github.com/splatterfacegames/godot-flatbuffers">GitHub</a><a href="https://github.com/splatterfacegames/godot-flatbuffers/blob/main/README.md">Documentation</a><a href="https://github.com/splatterfacegames/godot-flatbuffers/blob/main/LICENSE">MIT License</a></div>
+    </footer>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

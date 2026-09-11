@@ -1,0 +1,33 @@
+namespace Demo;
+
+enum Shape : byte { Circle = 0, Square = 1, Triangle = 2 }
+
+table ChatMsg {
+  author:string;
+  text:string;
+  sent_at:ulong;
+}
+
+table MoveMsg {
+  from_cell:ubyte;
+  to_cell:ubyte;
+  card_id:uint;
+  combo_chain:[ubyte];
+}
+
+table SpawnMsg {
+  name:string;
+  shape:Shape;
+  score:float;
+  tags:[string];
+}
+
+union DemoMsg { ChatMsg, MoveMsg, SpawnMsg }
+
+table Packet {
+  seq:uint;
+  sent_by:string;
+  msg:DemoMsg;
+}
+
+root_type Packet;

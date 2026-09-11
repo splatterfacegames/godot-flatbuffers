@@ -4,3 +4,8 @@ tests/node/package*.json
 tests/gen_ts/
 tests/gen_py/
 tests/gen_tt.gd
+
+# demo build output
+demo/dist/
+demo/.godot/
+demo/*.uid

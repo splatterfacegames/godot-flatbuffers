@@ -1,0 +1,70 @@
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Godot, flatc, and Web export templates
+        run: |
+          curl -L --fail --output godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip
+          curl -L --fail --output templates.tpz \
+            https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_export_templates.tpz
+          curl -L --fail --output flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g++-13.zip
+          unzip -q godot.zip
+          chmod +x Godot_v4.7.1-stable_linux.x86_64
+          sudo mv Godot_v4.7.1-stable_linux.x86_64 /usr/local/bin/godot
+          unzip -q templates.tpz -d /tmp/godot-templates
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          mv /tmp/godot-templates/templates "$HOME/.local/share/godot/export_templates/4.7.1.stable"
+          unzip -o -q flatc.zip -d /tmp/flatc || unzip -o -q flatc.zip -d /tmp/flatc 'flatc' || true
+          find /tmp/flatc -name flatc -type f | head -1 | xargs -I{} sudo mv {} /usr/local/bin/flatc
+          chmod +x /usr/local/bin/flatc
+          pip install flatbuffers
+      - name: Build product site and Godot Web demo
+        run: |
+          mkdir -p dist/demo demo/dist/demo
+          (cd demo && godot --headless --import && godot --headless --export-release Web dist/demo/index.html)
+          cp -R demo/dist/demo/. dist/demo/
+          cp -R site/. dist/
+          node scripts/prepare_r2_assets.mjs dist .r2-upload
+      - name: Upload oversized demo assets to R2
+        if: ${{ hashFiles('.r2-upload/**') != '' }}
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: WHEN_REQUIRED
+          AWS_RESPONSE_CHECKSUM_VALIDATION: WHEN_REQUIRED
+        run: >-
+          aws s3 cp .r2-upload s3://godot-flatbuffers-web
+          --recursive
+          --endpoint-url "${{ secrets.CLOUDFLARE_R2_ENDPOINT }}"
+      - name: Deploy site and R2 proxy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: 4.127.1
+          command: pages deploy --branch=main --commit-dirty=true

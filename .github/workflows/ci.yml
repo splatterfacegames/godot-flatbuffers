@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Godot + flatc + flatbuffers pkgs
+        run: |
+          curl -L --fail --output godot.zip \
+            https://github.com/godotengine/godot/releases/download/4.7.1-stable/Godot_v4.7.1-stable_linux.x86_64.zip
+          unzip -q godot.zip
+          chmod +x Godot_v4.7.1-stable_linux.x86_64
+          sudo mv Godot_v4.7.1-stable_linux.x86_64 /usr/local/bin/godot
+          curl -L --fail --output flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.g++-13.zip
+          unzip -o -q flatc.zip -d /tmp/flatc
+          find /tmp/flatc -name flatc -type f | head -1 | xargs -I{} sudo cp {} /usr/local/bin/flatc
+          chmod +x /usr/local/bin/flatc
+          pip install flatbuffers
+          (cd tests/node && npm i)
+      - name: Build golden vectors + generate accessors
+        run: |
+          node tests/node/gen_golden.mjs
+          flatc --schema -b -o tests tests/schema.fbs
+          python tools/generate_gd.py tests/schema.bfbs tests/gen_test.gd
+          python tools/generate_gd.py tests/tt.bfbs tests/gen_tt.gd --class-name TT
+      - name: Run GDScript test suite
+        run: |
+          godot --headless --import
+          godot --headless --script tests/run_tests.gd
